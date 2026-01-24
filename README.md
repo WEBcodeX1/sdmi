@@ -1,2 +1,2 @@
 # SDMI
-SDMI (Simple Docker Management Instrumentation)
+SDMI - Simple (SDN Driven) Docker Management Instrumentation
