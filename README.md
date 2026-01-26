@@ -1,2 +1,2 @@
-# SDMI (Prometheus)
+# SDMI (Oddysey)
 SDMI - Simple (SDN Driven) Docker Management Instrumentation.
