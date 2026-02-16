@@ -4,59 +4,57 @@ SDMI - Simple (SDN Driven) Docker Management Instrumentation.
 
 ## 1. Abstract
 
-Why does the world need another docker management instrumentation today?
+Why does the world need another Docker management instrumentation today?
 
-- Docker management infrastructure (including compose) increases in complexity over time where it should reduce
-- Most frameworks ship with sub-optimal Network abstraction layers
-- Software Defined Networking (SDN) was never an option where reducing complexity a lot ... also provides nearly 100% reliablility
+- Docker management infrastructure (including Compose) increases in complexity over time, whereas it should decrease
+- Most frameworks ship with sub-optimal network abstraction layers
+- Software Defined Networking (SDN) was never considered an option, despite significantly reducing complexity while also providing nearly 100% reliability
 - Management (orchestration plane) often lacks OOP principles
-- Systems interation (e.g. metrics) often needs higher level programming skills
+- Systems integration (e.g., metrics) often requires higher-level programming skills
 
 The SDMI (codename Odyssey) addresses these topics and provides:
 
-- Code base easy to understand and to maintain
-- Minimalistic bloat (prevent including submodule 289, submodule 290 and so forth)
-- This reduces refactoring / update effort on dependend packages update a lot
-- Why to reinvent the wheel when stable, reliable **and** field proven mechanisms already exist (SDN)
+- A code base that is easy to understand and maintain
+- Minimalistic dependencies (preventing inclusion of submodule 289, submodule 290, and so forth)
+- Reduced refactoring and update effort when dependent packages are updated
+- Reuse of stable, reliable, **and** field-proven mechanisms (SDN) rather than reinventing the wheel
 
 ## 2. History
 
-Over multiple decades ago (the virtualization age was rising up) smart engineers thought about software managed platform infrastructure setup.
-Massive user count explosions and increasing service complexity forced ...
+Over multiple decades ago, as the virtualization era was emerging, engineers began developing software-managed platform infrastructure. Massive user growth and increasing service complexity necessitated new solutions.
 
-As first we have to state out: software defined networking can be misunderstood. When we primarily speak about SDN we are talking about the OpenFlow protocol. In some circumstances people often "verwechseln" the terminology with software which controls networking setups (including linux as a whole).
+First, it is important to clarify that Software Defined Networking can be misunderstood. When we primarily speak about SDN, we are referring to the OpenFlow protocol. In some circumstances, people often confuse this terminology with software that controls networking setups (including Linux as a whole).
 
-The SDMI uses **both**: SDN (OpenFlow) and parts of software (NETCONFG, ), but **no** *linux container or VM based* network abstraction (OpenStack or similar). Network processing should take place only in rock-solid, field-proven and future- Ethernet-Switch-Hardware (Cisco Nexus 9000 / Allied Telesis).
+The SDMI uses **both**: SDN (OpenFlow) and parts of software (NETCONF), but **no** *Linux container or VM-based* network abstraction (OpenStack or similar). Network processing should take place only in rock-solid, field-proven, and standards-compliant Ethernet switch hardware (Cisco Nexus 9000 / Allied Telesis).
 
-Such network abstractions also make it **very hard** to integrate appropriate reliability (single-point-of-failure-less architecture) where a SDN driven approach does.
+Such network abstractions also make it **very difficult** to implement appropriate reliability (single-point-of-failure-free architecture), whereas an SDN-driven approach enables this more effectively.
 
 ## 3. Concrete Goals
 
-- Automatic on-demand up / down scaling
-- Easy, OOP based systems integration (orchestration, metrics)
-- Roling updates (with zero downtime)
+- Automatic on-demand up/down scaling
+- Easy, OOP-based systems integration (orchestration, metrics)
+- Rolling updates (with zero downtime)
 - Recursive network dependency management
-- Multi-Host, Datacenter "Betrieb" / Hardware Virtual Machine Abstraction
+- Multi-host, datacenter operation and hardware virtual machine abstraction
 
-## 3. Architecture
+## 4. Architecture
 
-#TODO: add architecture description
-#TODO: add architecture diagram(s)
+*Architecture description and diagrams are forthcoming.*
 
-## 4. Milestones
+## 5. Milestones
 
-## 4.1 Basic Network Orchestration - Milestone 1
+### 5.1 Basic Network Orchestration - Milestone 1
 
 - Excellent orchestrator OOP abstraction
 - Build an example with multi-network dependencies
 
-#TODO: add example diagram(s)
+*Example diagrams are forthcoming.*
 
-The orchestrators design must be **native* object oriented (OOP), not . As programming language, the Python programming language version 3+ will be used.
+The orchestrator's design must be **natively** object-oriented (OOP). Python version 3+ will be used as the programming language.
 
-A *fast*, working orchestrator (non OOP) implementation (draft) can be found here: ... and will be used as "vorlage" ...
+A *fast*, working orchestrator (non-OOP) implementation (draft) is available in a separate repository and will be used as a template for initial development.
 
-## 5. Dependencies
+## 6. Dependencies
 
 - Micro-ESB
 - SimpleRPCSocket
