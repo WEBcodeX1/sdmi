@@ -52,7 +52,7 @@ Such network abstractions also make it **very difficult** to implement appropria
 
 The orchestrator's design must be **natively** object-oriented (OOP). Python version 3+ will be used as the programming language.
 
-A *fast*, working orchestrator (non-OOP) implementation (draft) is available in a separate repository and will be used as a template for initial development.
+A *fast*, working orchestrator (non-OOP) implementation (draft) is available here: https://github.com/clauspruefer/python-dbpool/tree/main/example/01-logical-replication and will be used as a template for initial development.
 
 ## 6. Dependencies
 
