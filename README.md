@@ -98,7 +98,12 @@ The following porgramming languages are allowed:
 
 ## 7. Basic Dependencies
 
-- Docker
-- Micro-ESB
-- SimpleRPCSocket (JSocket fork)
-- PowerDNS (signed ANS zones)
+- Docker - https://www.docker.com
+- Micro-ESB - https://github.com/clauspruefer/python-micro-esb
+- SimpleRPCSocket (JSocket fork) - https://github.com/clauspruefer/python-json-socket
+
+### 7.1. Extended Dependencies
+
+- PowerDNS (signed ANS zones) - https://www.powerdns.com
+- MongoDB (NoSQL backend) - https://www.mongodb.com
+- PostgreSQL (SQL backend) - https://www.postgresql.org
