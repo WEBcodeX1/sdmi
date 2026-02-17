@@ -65,7 +65,15 @@ The orchestrator's design must be **natively** object-oriented (OOP). Python ver
 
 A *fast*, working orchestrator (non-OOP) implementation (draft) is available here: https://github.com/clauspruefer/python-dbpool/tree/main/example/01-logical-replication and will be used as a template for initial development.
 
-## 6. Engineering Guidelines
+## 6. Sub-Projects
+
+Also, a 100% fail-safe management plane (orchestration) layer needs modern protocol design approaches.
+
+1. RDMP (Reliable Message Distribution Protocol)
+
+To integrate a "in-parallel" acting, "transactional" control message processing, (see: https://www.der-it-pruefer.de/infrastructure/Kubernetes-Control-Plane-Architectural-Challenges#32) we propose the RDMP protocol.
+
+## 7. Engineering Guidelines
 
 The basic engineering guidelines represent the following:
 
@@ -76,7 +84,7 @@ The basic engineering guidelines represent the following:
 - Avoid code bloating
 - Security should play a primary role
 
-### 6.1. Programming Languages
+### 7.1. Programming Languages
 
 The following porgramming languages are allowed:
 
@@ -85,7 +93,7 @@ The following porgramming languages are allowed:
 - JavaScript (frontend systems)
 - JavaScript JSON notation (all langueages)
 
-### 6.2. External Package Inclusion
+### 7.2. External Package Inclusion
 
 - Only packages following a generic OOP approach allowed
 - Package content (code) must be validated personally
@@ -96,13 +104,14 @@ The following porgramming languages are allowed:
 > [!NOTE]
 > In some minor special cases, e.g. python `ipcalc` package is non-OOP but does exactly (and not more) what it should do.
 
-## 7. Basic Dependencies
+## 8. Basic Dependencies
 
 - Docker - https://www.docker.com
-- Micro-ESB - https://github.com/clauspruefer/python-micro-esb
+- Python Micro-ESB - https://github.com/clauspruefer/python-micro-esb
 - SimpleRPCSocket (JSocket fork) - https://github.com/clauspruefer/python-json-socket
+- libvirt (Docker VirtualMachine encapsulation) - https://libvirt.org
 
-### 7.1. Extended Dependencies
+### 8.1. Extended Dependencies
 
 - PowerDNS (signed ANS zones) - https://www.powerdns.com
 - MongoDB (NoSQL backend) - https://www.mongodb.com
