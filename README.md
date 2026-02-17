@@ -25,7 +25,7 @@ Over multiple decades ago, as the virtualization era was emerging, engineers beg
 
 First, it is important to clarify that Software Defined Networking can be misunderstood. When we primarily speak about SDN, we are referring to the OpenFlow protocol. In some circumstances, people often confuse this terminology with software that controls networking setups (including Linux as a whole).
 
-The SDMI uses **both**: SDN (OpenFlow) and parts of software (NETCONF), but **no** *Linux container or VM-based* network abstraction (OpenStack or similar). Network processing should take place only in rock-solid, field-proven, and standards-compliant Ethernet switch hardware (Cisco Nexus 9000 / Allied Telesis).
+The SDMI uses **both**: SDN (OpenFlow) and parts of software generated config (NETCONF), but **no** *Linux container or VM-based* network abstraction (OpenStack or similar). Network processing should take place only in rock-solid, field-proven, and standards-compliant Ethernet switch hardware (Cisco Nexus 9000 / Allied Telesis).
 
 Such network abstractions also make it **very difficult** to implement appropriate reliability (single-point-of-failure-free architecture), whereas an SDN-driven approach enables this more effectively.
 
@@ -34,12 +34,23 @@ Such network abstractions also make it **very difficult** to implement appropria
 - Automatic on-demand up/down scaling
 - Easy, OOP-based systems integration (orchestration, metrics)
 - Rolling updates (with zero downtime)
-- Recursive network dependency management
+- Hierarhical (recursive) network dependency management
 - Multi-host, datacenter operation and hardware virtual machine abstraction
+- Be devops friendly (role based access control)
+- Centralized, easy to maintain AAA infrastructure (including PKCS enabled hardware)
+- Centralized ANS (DoT) signed zone integration / internal host management
 
 ## 4. Architecture
 
-*Architecture description and diagrams are forthcoming.*
+*Architecture description is forthcoming.*
+
+### 4.1. Overview
+
+![SDMI Architecture - Overview](./diagram/SDMI-Architrecture-Overview.png)
+
+### 4.2. Docker Infrastrucure
+
+![SDMI Architecture - Docker Infrastructure](./diagram/SDMI-Architecture-Docker-Infrastructure.png)
 
 ## 5. Milestones
 
@@ -54,7 +65,19 @@ The orchestrator's design must be **natively** object-oriented (OOP). Python ver
 
 A *fast*, working orchestrator (non-OOP) implementation (draft) is available here: https://github.com/clauspruefer/python-dbpool/tree/main/example/01-logical-replication and will be used as a template for initial development.
 
-## 6. Dependencies
+## 6. Engineering Guidelines
+
+Some simple rules ... Concrete guidelines are following.
+
+- Avoid package bloating
+-
+
+## 7. Dependencies
+
+As ... Python 3.6+ will be used as main language ...
 
 - Micro-ESB
 - SimpleRPCSocket
+
+
+- HTTP/1.2
