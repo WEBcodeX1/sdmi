@@ -34,7 +34,7 @@ Such network abstractions also make it **very difficult** to implement appropria
 - Automatic on-demand (latency-less) up/down scaling
 - Easy, OOP-based systems integration (orchestration, metrics)
 - Rolling updates (with zero downtime)
-- Hierarhical (recursive) network dependency management
+- Hierarchical (recursive) network dependency management
 - Multi-host, datacenter operation and hardware virtual machine abstraction
 - Be devops friendly (role based access control)
 - Centralized, easy to maintain AAA infrastructure (including PKCS enabled hardware)
@@ -48,7 +48,7 @@ Such network abstractions also make it **very difficult** to implement appropria
 
 ![SDMI Architecture - Overview](./diagram/SDMI-Architecture-Overview.png)
 
-### 4.2. Docker Infrastrucure
+### 4.2. Docker Infrastructure
 
 ![SDMI Architecture - Docker Infrastructure](./diagram/SDMI-Architecture-Docker-Infrastructure.png)
 
@@ -78,20 +78,20 @@ The basic engineering guidelines represent the following:
 
 ### 6.1. Programming Languages
 
-The following porgramming languages are allowed:
+The following programming languages are allowed:
 
 - Python (management / orchestration)
 - C++ (protocol specific / orchestration)
 - JavaScript (frontend systems)
-- JavaScript JSON notation (all langueages)
+- JavaScript JSON notation (all languages)
 
 ### 6.2. External Package Inclusion
 
 - Only packages following a generic OOP approach allowed
 - Package content (code) must be validated personally
-- Only use external packages when really necessarry
-- External package codebase should be small, übersichtlich
-- External packages should only cope with
+- Only use external packages when really necessary
+- External package codebase should be small and manageable
+- External packages should only address specific, well-defined functionality
 
 > [!NOTE]
 > In some minor special cases, e.g. python `ipcalc` package is non-OOP but does exactly (and not more) what it should do.
