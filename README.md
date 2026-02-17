@@ -73,6 +73,16 @@ Also, a 100% fail-safe management plane (orchestration) layer needs modern proto
 
 To integrate a "in-parallel" acting, "transactional" control message processing, (see: https://www.der-it-pruefer.de/infrastructure/Kubernetes-Control-Plane-Architectural-Challenges#32) we propose the RDMP protocol.
 
+2. Control Channel Integraion / Abstraction
+
+Runtime integration (scaling container nodes up/down) requires communication between platform instances:
+
+- Schema definition(s) for node metrics data
+- Schema definition(s) for metrics schwellwerte
+- Schema definition(s) for runtime workflow integration (e.g. addNode(), removeNode())
+
+Specifications must be in (internal) JSON format. Specification definitions is ongoing work / WIP.
+
 ## 7. Engineering Guidelines
 
 The basic engineering guidelines represent the following:
