@@ -93,7 +93,7 @@ The following porgramming languages are allowed:
 - External package codebase should be small, übersichtlich
 - External packages should only cope with
 
-> [!NOTICE]
+> [!NOTE]
 > In some minor special cases, e.g. python `ipcalc` package is non-OOP but does exactly (and not more) what it should do.
 
 ## 7. Basic Dependencies
