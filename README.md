@@ -81,7 +81,7 @@ Runtime integration (scaling container nodes up/down) requires communication bet
 - Schema definition(s) for metrics schwellwerte
 - Schema definition(s) for runtime workflow integration (e.g. addNode(), removeNode())
 
-Specifications must be in (internal) JSON format. Specification definitions is ongoing work / WIP.
+Definitions must be in (internal) JSON format. Specification definitions are ongoing work / WIP.
 
 ## 7. Engineering Guidelines
 
