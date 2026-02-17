@@ -31,7 +31,7 @@ Such network abstractions also make it **very difficult** to implement appropria
 
 ## 3. Concrete Goals
 
-- Automatic on-demand up/down scaling
+- Automatic on-demand (latency-less) up/down scaling
 - Easy, OOP-based systems integration (orchestration, metrics)
 - Rolling updates (with zero downtime)
 - Hierarhical (recursive) network dependency management
@@ -42,11 +42,11 @@ Such network abstractions also make it **very difficult** to implement appropria
 
 ## 4. Architecture
 
-*Architecture description is forthcoming.*
+*Architecture description is forthcoming / WIP.*
 
 ### 4.1. Overview
 
-![SDMI Architecture - Overview](./diagram/SDMI-Architrecture-Overview.png)
+![SDMI Architecture - Overview](./diagram/SDMI-Architecture-Overview.png)
 
 ### 4.2. Docker Infrastrucure
 
@@ -67,17 +67,38 @@ A *fast*, working orchestrator (non-OOP) implementation (draft) is available her
 
 ## 6. Engineering Guidelines
 
-Some simple rules ... Concrete guidelines are following.
+The basic engineering guidelines represent the following:
 
-- Avoid package bloating
--
+- No closed source
+- Only validated external packages (approved code)
+- Strict tests (unit, integration, end2end) validating 100% functionality
+- Using only clean code / abstraction models
+- Avoid code bloating
+- Security should play a primary role
 
-## 7. Dependencies
+### 6.1. Programming Languages
 
-As ... Python 3.6+ will be used as main language ...
+The following porgramming languages are allowed:
 
+- Python (management / orchestration)
+- C++ (protocol specific / orchestration)
+- JavaScript (frontend systems)
+- JavaScript JSON notation (all langueages)
+
+### 6.2. External Package Inclusion
+
+- Only packages following a generic OOP approach allowed
+- Package content (code) must be validated personally
+- Only use external packages when really necessarry
+- External package codebase should be small, übersichtlich
+- External packages should only cope with
+
+> [!NOTICE]
+> In some minor special cases, e.g. python `ipcalc` package is non-OOP but does exactly (and not more) what it should do.
+
+## 7. Basic Dependencies
+
+- Docker
 - Micro-ESB
-- SimpleRPCSocket
-
-
-- HTTP/1.2
+- SimpleRPCSocket (JSocket fork)
+- PowerDNS (signed ANS zones)
