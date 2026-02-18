@@ -59,7 +59,7 @@ Such network abstractions also make it **very difficult** to implement appropria
 - Excellent orchestrator OOP abstraction
 - Build an example with multi-network dependencies
 
-*Example diagrams are forthcoming.*
+![SDMI Milestone 1 - Logical Setup](./diagram/SDMI-Milestone1-Logical-Setup.png)
 
 The orchestrator's design must be **natively** object-oriented (OOP). Python version 3+ will be used as the programming language.
 
