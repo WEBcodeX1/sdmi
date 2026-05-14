@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/rdmp_server.dir/link.d CMakeFiles/rdmp_server.dir/src/rdmp_server.cpp.o CMakeFiles/rdmp_server.dir/src/rdmp_server_main.cpp.o -o rdmp_server  librdmp_core.a /usr/lib/x86_64-linux-gnu/libcurl.so /usr/lib/x86_64-linux-gnu/libcrypto.so

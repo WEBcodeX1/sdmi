@@ -1,0 +1,2 @@
+/usr/bin/ar qc librdmp_core.a CMakeFiles/rdmp_core.dir/src/rdmp_common.cpp.o CMakeFiles/rdmp_core.dir/src/rdmp_s3.cpp.o
+/usr/bin/ranlib librdmp_core.a

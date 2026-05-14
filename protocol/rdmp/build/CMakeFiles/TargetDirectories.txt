@@ -1,0 +1,9 @@
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/rdmp_core.dir
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/rdmp_client.dir
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/rdmp_server.dir
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/edit_cache.dir
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/rebuild_cache.dir
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/list_install_components.dir
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/install.dir
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/install/local.dir
+/home/runner/work/sdmi/sdmi/protocol/rdmp/build/CMakeFiles/install/strip.dir
