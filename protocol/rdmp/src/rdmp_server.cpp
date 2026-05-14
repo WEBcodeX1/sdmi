@@ -224,7 +224,7 @@ bool RDMPServer::tryClaimTask(const std::string& uuid) {
     et.uuid        = uuid;
     et.started_ms  = currentTimeMs();
     et.retry_count = 0;
-    executing_[uuid] = et;
+    executing_[uuid]    = et;
     local_status_[uuid] = claim;
 
     std::cout << "[RDMP/Server] Claimed task: " << uuid << "\n";

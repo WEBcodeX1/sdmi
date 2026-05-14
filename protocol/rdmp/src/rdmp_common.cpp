@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 
@@ -62,15 +63,23 @@ std::string currentTimestamp() {
 std::string generateUUID() {
     unsigned char b[16] = {};
 
+    // Prefer /dev/urandom for cryptographic-quality randomness.
     FILE* f = fopen("/dev/urandom", "rb");
     if (f) {
-        if (fread(b, 1, 16, f) != 16) {
-            // partial read – fill remainder with pseudo-random bytes
-            for (int i = 0; i < 16; ++i) b[i] ^= static_cast<unsigned char>(rand());
-        }
+        size_t rd = fread(b, 1, 16, f);
         fclose(f);
+        if (rd != 16) {
+            // /dev/urandom partial read is extremely rare; fall back to
+            // std::random_device for the remaining bytes.
+            std::random_device rdev;
+            std::uniform_int_distribution<unsigned int> dist(0, 255);
+            for (size_t i = rd; i < 16; ++i) b[i] = static_cast<unsigned char>(dist(rdev));
+        }
     } else {
-        for (int i = 0; i < 16; ++i) b[i] = static_cast<unsigned char>(rand());
+        // No /dev/urandom – use std::random_device (may be hardware-backed).
+        std::random_device rdev;
+        std::uniform_int_distribution<unsigned int> dist(0, 255);
+        for (int i = 0; i < 16; ++i) b[i] = static_cast<unsigned char>(dist(rdev));
     }
 
     // Set version 4 and variant bits

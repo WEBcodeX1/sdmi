@@ -16,7 +16,7 @@ namespace rdmp {
 //
 // Callback registered by the application to process tasks.
 // Receives the task UUID and payload; must return a result string that is
-// persisted to the S3 shared transaction cache.
+// persisted to the S3 shared status cache.
 // ---------------------------------------------------------------------------
 
 using TaskHandler = std::function<std::string(const std::string& uuid,
@@ -37,7 +37,6 @@ struct SourceReceipt {
 // A task that this server instance is currently executing / has claimed.
 struct ExecutingTask {
     std::string uuid;
-    std::string payload;
     int64_t     started_ms  = 0;
     int         retry_count = 0;
 };
