@@ -1,4 +1,5 @@
 #include "rdmp_common.hpp"
+#include "nlohmann/json.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -7,7 +8,6 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
-#include <map>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -206,107 +206,110 @@ TaskStatusRecord parseTaskStatus(const std::string& json) {
 }
 
 // ---------------------------------------------------------------------------
-// INI-style config file parser
+// JSON config file loader (nlohmann::json)
 // ---------------------------------------------------------------------------
 
-static std::string trimStr(const std::string& s) {
-    size_t b = s.find_first_not_of(" \t\r\n");
-    if (b == std::string::npos) return "";
-    size_t e = s.find_last_not_of(" \t\r\n");
-    return s.substr(b, e - b + 1);
+using nlohmann::json;
+
+static SyncType parseSyncType(const std::string& s) {
+    if (s == "local-files") return SyncType::LocalFiles;
+    return SyncType::S3;
 }
 
-static std::map<std::string, std::string> parseIniFile(const std::string& path) {
-    std::ifstream f(path);
-    if (!f) throw std::runtime_error("Cannot open config file: " + path);
-
-    std::map<std::string, std::string> kv;
-    std::string section;
-    std::string line;
-
-    while (std::getline(f, line)) {
-        line = trimStr(line);
-        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
-
-        if (line.front() == '[') {
-            size_t end = line.find(']');
-            section = (end != std::string::npos) ? line.substr(1, end - 1) : line.substr(1);
-            continue;
-        }
-
-        size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
-
-        std::string k = trimStr(line.substr(0, eq));
-        std::string v = trimStr(line.substr(eq + 1));
-        kv[section + "." + k] = v;
+static GlobalConfig loadGlobal(const json& j) {
+    GlobalConfig g;
+    if (j.contains("global") && j["global"].is_object()) {
+        const auto& gj = j["global"];
+        g.synctype = parseSyncType(gj.value("synctype", "s3"));
     }
-    return kv;
+    return g;
 }
 
-static uint32_t cfgUint(const std::map<std::string, std::string>& kv,
-                         const std::string& key, uint32_t def) {
-    auto it = kv.find(key);
-    if (it == kv.end() || it->second.empty()) return def;
-    return static_cast<uint32_t>(std::stoul(it->second));
-}
-
-static std::string cfgStr(const std::map<std::string, std::string>& kv,
-                            const std::string& key, const std::string& def = "") {
-    auto it = kv.find(key);
-    if (it == kv.end()) return def;
-    return it->second;
-}
-
-static MulticastConfig loadMulticast(const std::map<std::string, std::string>& kv) {
+static MulticastConfig loadMulticastJson(const json& j) {
     MulticastConfig m;
-    m.group = cfgStr(kv, "multicast.group", m.group);
-    m.port  = static_cast<uint16_t>(cfgUint(kv, "multicast.port", m.port));
-    m.ttl   = static_cast<uint8_t>(cfgUint(kv, "multicast.ttl",  m.ttl));
-    m.iface = cfgStr(kv, "multicast.interface", m.iface);
+    if (!j.contains("multicast") || !j["multicast"].is_object()) return m;
+    const auto& mj = j["multicast"];
+    m.group = mj.value("group", m.group);
+    m.port  = static_cast<uint16_t>(mj.value("port", static_cast<int>(m.port)));
+    m.ttl   = static_cast<uint8_t>(mj.value("ttl",  static_cast<int>(m.ttl)));
+    m.iface = mj.value("interface", m.iface);
     return m;
 }
 
-static S3Config loadS3(const std::map<std::string, std::string>& kv) {
+static S3Config loadS3Json(const json& j) {
     S3Config s;
-    s.endpoint   = cfgStr(kv, "s3.endpoint",   s.endpoint);
-    s.bucket     = cfgStr(kv, "s3.bucket",     s.bucket);
-    s.access_key = cfgStr(kv, "s3.access_key", s.access_key);
-    s.secret_key = cfgStr(kv, "s3.secret_key", s.secret_key);
-    s.region     = cfgStr(kv, "s3.region",     s.region);
+    if (!j.contains("s3") || !j["s3"].is_object()) return s;
+    const auto& sj = j["s3"];
+    s.endpoint   = sj.value("endpoint",   s.endpoint);
+    s.bucket     = sj.value("bucket",     s.bucket);
+    s.access_key = sj.value("access_key", s.access_key);
+    s.secret_key = sj.value("secret_key", s.secret_key);
+    s.region     = sj.value("region",     s.region);
     return s;
 }
 
-static TimeoutConfig loadTimeouts(const std::map<std::string, std::string>& kv) {
+static LocalFilesConfig loadLocalFilesJson(const json& j) {
+    LocalFilesConfig lf;
+    if (!j.contains("local_files") || !j["local_files"].is_object()) return lf;
+    const auto& lfj = j["local_files"];
+    lf.base_path = lfj.value("base_path", lf.base_path);
+    return lf;
+}
+
+static TimeoutConfig loadTimeoutsJson(const json& j) {
     TimeoutConfig t;
-    t.task_execution_ms          = cfgUint(kv, "timeouts.task_execution_ms",           t.task_execution_ms);
-    t.s3_poll_interval_ms        = cfgUint(kv, "timeouts.s3_poll_interval_ms",         t.s3_poll_interval_ms);
-    t.degradation_threshold_ms   = cfgUint(kv, "timeouts.degradation_threshold_ms",    t.degradation_threshold_ms);
-    t.watchdog_interval_ms       = cfgUint(kv, "timeouts.watchdog_interval_ms",        t.watchdog_interval_ms);
-    t.retry_delay_ms             = cfgUint(kv, "timeouts.retry_delay_ms",              t.retry_delay_ms);
-    t.multicast_repeat_count     = cfgUint(kv, "timeouts.multicast_repeat_count",      t.multicast_repeat_count);
-    t.multicast_repeat_interval_ms = cfgUint(kv, "timeouts.multicast_repeat_interval_ms",
-                                              t.multicast_repeat_interval_ms);
+    if (!j.contains("timeouts") || !j["timeouts"].is_object()) return t;
+    const auto& tj = j["timeouts"];
+    t.task_execution_ms          = tj.value("task_execution_ms",          t.task_execution_ms);
+    t.s3_poll_interval_ms        = tj.value("s3_poll_interval_ms",        t.s3_poll_interval_ms);
+    t.degradation_threshold_ms   = tj.value("degradation_threshold_ms",   t.degradation_threshold_ms);
+    t.watchdog_interval_ms       = tj.value("watchdog_interval_ms",        t.watchdog_interval_ms);
+    t.retry_delay_ms             = tj.value("retry_delay_ms",              t.retry_delay_ms);
+    t.multicast_repeat_count     = tj.value("multicast_repeat_count",      t.multicast_repeat_count);
+    t.multicast_repeat_interval_ms = tj.value("multicast_repeat_interval_ms",
+                                               t.multicast_repeat_interval_ms);
     return t;
 }
 
 ClientConfig loadClientConfig(const std::string& path) {
-    auto kv = parseIniFile(path);
+    std::ifstream f(path);
+    if (!f) throw std::runtime_error("Cannot open config file: " + path);
+    json j;
+    try {
+        f >> j;
+    } catch (const json::parse_error& e) {
+        throw std::runtime_error("JSON parse error in " + path + ": " + e.what());
+    }
+
     ClientConfig c;
-    c.multicast = loadMulticast(kv);
-    c.s3        = loadS3(kv);
-    c.timeouts  = loadTimeouts(kv);
-    c.node_id   = cfgStr(kv, "node.id", c.node_id);
+    c.global      = loadGlobal(j);
+    c.multicast   = loadMulticastJson(j);
+    c.s3          = loadS3Json(j);
+    c.local_files = loadLocalFilesJson(j);
+    c.timeouts    = loadTimeoutsJson(j);
+    if (j.contains("node") && j["node"].is_object())
+        c.node_id = j["node"].value("id", c.node_id);
     return c;
 }
 
 ServerConfig loadServerConfig(const std::string& path) {
-    auto kv = parseIniFile(path);
+    std::ifstream f(path);
+    if (!f) throw std::runtime_error("Cannot open config file: " + path);
+    json j;
+    try {
+        f >> j;
+    } catch (const json::parse_error& e) {
+        throw std::runtime_error("JSON parse error in " + path + ": " + e.what());
+    }
+
     ServerConfig s;
-    s.multicast = loadMulticast(kv);
-    s.s3        = loadS3(kv);
-    s.timeouts  = loadTimeouts(kv);
-    s.node_id   = cfgStr(kv, "node.id", s.node_id);
+    s.global      = loadGlobal(j);
+    s.multicast   = loadMulticastJson(j);
+    s.s3          = loadS3Json(j);
+    s.local_files = loadLocalFilesJson(j);
+    s.timeouts    = loadTimeoutsJson(j);
+    if (j.contains("node") && j["node"].is_object())
+        s.node_id = j["node"].value("id", s.node_id);
     return s;
 }
 

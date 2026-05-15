@@ -14,7 +14,7 @@
 namespace rdmp {
 
 // ---------------------------------------------------------------------------
-// S3 key prefixes (must match rdmp_client.cpp)
+// Storage key prefixes (must match rdmp_client.cpp)
 // ---------------------------------------------------------------------------
 
 static const std::string S3_TASK_PREFIX   = "tasks/";
@@ -26,7 +26,7 @@ static const std::string S3_STATUS_PREFIX = "status/";
 
 RDMPServer::RDMPServer(const std::string& config_path)
     : config_(loadServerConfig(config_path)),
-      s3_(config_.s3) {
+      backend_(makeStorageBackend(config_)) {
     setupSocket();
     last_watchdog_ms_ = currentTimeMs();
 }
@@ -185,7 +185,7 @@ bool RDMPServer::tryClaimTask(const std::string& uuid) {
     const std::string status_key = S3_STATUS_PREFIX + uuid;
 
     // Check current status on S3
-    std::string existing = s3_.getObject(status_key);
+    std::string existing = backend_->getObject(status_key);
     if (!existing.empty()) {
         TaskStatusRecord cur = parseTaskStatus(existing);
         if (cur.status == TaskStatus::EXECUTING ||
@@ -203,13 +203,13 @@ bool RDMPServer::tryClaimTask(const std::string& uuid) {
     claim.updated_at = currentTimestamp();
     claim.result     = "";
 
-    if (!s3_.putObject(status_key, buildStatusJson(claim))) {
+    if (!backend_->putObject(status_key, buildStatusJson(claim))) {
         std::cerr << "[RDMP/Server] Failed to PUT claim for " << uuid << "\n";
         return false;
     }
 
     // Re-fetch to verify we won the optimistic race
-    std::string verify = s3_.getObject(status_key);
+    std::string verify = backend_->getObject(status_key);
     if (verify.empty()) return false;
 
     TaskStatusRecord verified = parseTaskStatus(verify);
@@ -280,7 +280,7 @@ void RDMPServer::updateTaskStatus(const std::string& uuid,
     r.result     = result;
 
     local_status_[uuid] = r;
-    s3_.putObject(S3_STATUS_PREFIX + uuid, buildStatusJson(r));
+    backend_->putObject(S3_STATUS_PREFIX + uuid, buildStatusJson(r));
 }
 
 // ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ void RDMPServer::runWatchdog() {
         if (status_rec.status != TaskStatus::EXECUTING) continue;
 
         // Fetch fresh S3 status
-        std::string body = s3_.getObject(S3_STATUS_PREFIX + uuid);
+        std::string body = backend_->getObject(S3_STATUS_PREFIX + uuid);
         if (body.empty()) continue;
 
         TaskStatusRecord fresh = parseTaskStatus(body);
@@ -339,7 +339,7 @@ void RDMPServer::runWatchdog() {
         executing_.erase(uuid);
 
         // Fetch task payload from S3 to retry
-        std::string task_body = s3_.getObject(S3_TASK_PREFIX + uuid);
+        std::string task_body = backend_->getObject(S3_TASK_PREFIX + uuid);
         if (task_body.empty()) {
             std::cerr << "[RDMP/Server] Cannot fetch task payload for retry: "
                       << uuid << "\n";
@@ -358,13 +358,13 @@ void RDMPServer::runWatchdog() {
 
     // Also check S3 for executing tasks this server does NOT know about,
     // which could have been left by crashed peers.
-    std::vector<std::string> status_keys = s3_.listObjects(S3_STATUS_PREFIX);
+    std::vector<std::string> status_keys = backend_->listObjects(S3_STATUS_PREFIX);
     for (const auto& key : status_keys) {
         if (key.size() <= S3_STATUS_PREFIX.size()) continue;
         const std::string uuid = key.substr(S3_STATUS_PREFIX.size());
         if (local_status_.count(uuid)) continue; // already tracked
 
-        std::string body = s3_.getObject(key);
+        std::string body = backend_->getObject(key);
         if (body.empty()) continue;
 
         TaskStatusRecord rec = parseTaskStatus(body);
