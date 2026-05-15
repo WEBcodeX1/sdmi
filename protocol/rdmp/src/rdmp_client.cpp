@@ -13,7 +13,7 @@
 namespace rdmp {
 
 // ---------------------------------------------------------------------------
-// S3 key prefixes
+// Storage key prefixes
 // ---------------------------------------------------------------------------
 
 static const std::string S3_TASK_PREFIX   = "tasks/";
@@ -25,7 +25,7 @@ static const std::string S3_STATUS_PREFIX = "status/";
 
 RDMPClient::RDMPClient(const std::string& config_path)
     : config_(loadClientConfig(config_path)),
-      s3_(config_.s3) {
+      backend_(makeStorageBackend(config_)) {
     setupSocket();
     last_s3_poll_ms_ = currentTimeMs();
 }
@@ -147,7 +147,7 @@ bool RDMPClient::storeTask(const std::string& uuid,
 
     const std::string key  = S3_TASK_PREFIX + uuid;
     const std::string body = buildTaskJson(t);
-    return s3_.putObject(key, body);
+    return backend_->putObject(key, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ void RDMPClient::pollS3ForNewTasks() {
     }
     last_s3_poll_ms_ = now;
 
-    std::vector<std::string> keys = s3_.listObjects(S3_TASK_PREFIX);
+    std::vector<std::string> keys = backend_->listObjects(S3_TASK_PREFIX);
     for (const auto& key : keys) {
         // key has the form "tasks/<uuid>"
         if (key.size() <= S3_TASK_PREFIX.size()) continue;
@@ -171,7 +171,7 @@ void RDMPClient::pollS3ForNewTasks() {
         if (known_tasks_.count(uuid)) continue;
 
         // New task discovered – fetch its payload and schedule a burst
-        std::string body = s3_.getObject(key);
+        std::string body = backend_->getObject(key);
         if (body.empty()) continue;
 
         Task t = parseTask(body);

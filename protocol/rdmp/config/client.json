@@ -1,0 +1,33 @@
+{
+    "global": {
+        "synctype": "s3"
+    },
+    "multicast": {
+        "group": "239.1.2.3",
+        "port": 5000,
+        "ttl": 32,
+        "interface": ""
+    },
+    "s3": {
+        "endpoint": "http://s3.internal.example.com:9000",
+        "bucket": "rdmp-tasks",
+        "access_key": "your-access-key",
+        "secret_key": "your-secret-key",
+        "region": "us-east-1"
+    },
+    "local_files": {
+        "base_path": "/tmp/rdmp-tasks"
+    },
+    "timeouts": {
+        "task_execution_ms": 5000,
+        "s3_poll_interval_ms": 1000,
+        "degradation_threshold_ms": 2000,
+        "watchdog_interval_ms": 2000,
+        "retry_delay_ms": 3000,
+        "multicast_repeat_count": 3,
+        "multicast_repeat_interval_ms": 100
+    },
+    "node": {
+        "id": "client1"
+    }
+}

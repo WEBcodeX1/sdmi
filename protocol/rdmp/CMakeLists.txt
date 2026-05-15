@@ -13,12 +13,14 @@ find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 # ---------------------------------------------------------------------------
-# Shared library: protocol core (common utilities + S3 client)
+# Shared library: protocol core (common utilities + backends)
 # ---------------------------------------------------------------------------
 
 add_library(rdmp_core STATIC
     src/rdmp_common.cpp
     src/rdmp_s3.cpp
+    src/rdmp_local_files.cpp
+    src/rdmp_backend.cpp
 )
 
 target_include_directories(rdmp_core PUBLIC include)
@@ -51,6 +53,13 @@ add_executable(rdmp_server
 
 target_include_directories(rdmp_server PRIVATE include)
 target_link_libraries(rdmp_server PRIVATE rdmp_core)
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+enable_testing()
+add_subdirectory(tests)
 
 # ---------------------------------------------------------------------------
 # Install targets (optional)

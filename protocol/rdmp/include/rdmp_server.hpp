@@ -1,9 +1,10 @@
 #pragma once
 
+#include "rdmp_backend.hpp"
 #include "rdmp_common.hpp"
-#include "rdmp_s3.hpp"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -16,7 +17,7 @@ namespace rdmp {
 //
 // Callback registered by the application to process tasks.
 // Receives the task UUID and payload; must return a result string that is
-// persisted to the S3 shared status cache.
+// persisted to the shared backend status cache.
 // ---------------------------------------------------------------------------
 
 using TaskHandler = std::function<std::string(const std::string& uuid,
@@ -51,9 +52,9 @@ struct ExecutingTask {
 //  1. Joins the configured UDP multicast group.
 //  2. runOnce() – called in a tight loop by the application; it:
 //       a. Tries a non-blocking receive on the multicast socket.
-//       b. On receiving a TASK_ANNOUNCE: checks local and S3 status; if the
-//          task is unclaimed the server attempts to exclusively claim it via
-//          an optimistic PUT→GET cycle, then executes it through the
+//       b. On receiving a TASK_ANNOUNCE: checks local and backend status; if
+//          the task is unclaimed the server attempts to exclusively claim it
+//          via an optimistic PUT→GET cycle, then executes it through the
 //          registered TaskHandler.
 //       c. Runs the watchdog (rate-limited by watchdog_interval_ms): scans
 //          known tasks for stale EXECUTING entries and retries them.
@@ -78,15 +79,15 @@ public:
     void stop();
 
 private:
-    ServerConfig config_;
-    S3Client     s3_;
-    TaskHandler  handler_;
+    ServerConfig                     config_;
+    std::unique_ptr<IStorageBackend> backend_;
+    TaskHandler                      handler_;
 
     // UDP receive socket (joined to the multicast group).
     int                sock_fd_    = -1;
     struct sockaddr_in bind_addr_  = {};
 
-    // Local mirror of task statuses (reduces redundant S3 fetches).
+    // Local mirror of task statuses (reduces redundant backend fetches).
     std::unordered_map<std::string, TaskStatusRecord> local_status_;
 
     // Tasks currently claimed by *this* server instance.
@@ -109,14 +110,14 @@ private:
                             const std::string& payload,
                             const std::string& src_ip);
 
-    // Attempt to exclusively claim a task via optimistic S3 PUT→GET.
+    // Attempt to exclusively claim a task via optimistic backend PUT→GET.
     // Returns true when this server successfully becomes the executor.
     bool tryClaimTask(const std::string& uuid);
 
-    // Execute the task and persist the result status to S3.
+    // Execute the task and persist the result status to the backend.
     void executeTask(const std::string& uuid, const std::string& payload);
 
-    // Persist a status update for uuid to both S3 and the local cache.
+    // Persist a status update for uuid to both backend and the local cache.
     void updateTaskStatus(const std::string& uuid,
                           TaskStatus         status,
                           const std::string& server_id = "",

@@ -43,8 +43,15 @@ std::string    taskStatusToString(TaskStatus s);
 TaskStatus     stringToTaskStatus(const std::string& s);
 
 // ---------------------------------------------------------------------------
-// Configuration structures  (loaded from INI-style config files)
+// Configuration structures  (loaded from JSON config files)
 // ---------------------------------------------------------------------------
+
+// Sync backend selector: "s3" or "local-files"
+enum class SyncType { S3, LocalFiles };
+
+struct GlobalConfig {
+    SyncType synctype = SyncType::S3;
+};
 
 struct MulticastConfig {
     std::string group          = "239.1.2.3";
@@ -61,6 +68,10 @@ struct S3Config {
     std::string region     = "us-east-1";
 };
 
+struct LocalFilesConfig {
+    std::string base_path = "/tmp/rdmp-tasks";
+};
+
 struct TimeoutConfig {
     uint32_t task_execution_ms          = 5000;
     uint32_t s3_poll_interval_ms        = 1000;
@@ -72,15 +83,19 @@ struct TimeoutConfig {
 };
 
 struct ClientConfig {
+    GlobalConfig    global;
     MulticastConfig multicast;
     S3Config        s3;
+    LocalFilesConfig local_files;
     TimeoutConfig   timeouts;
     std::string     node_id = "client1";
 };
 
 struct ServerConfig {
+    GlobalConfig    global;
     MulticastConfig multicast;
     S3Config        s3;
+    LocalFilesConfig local_files;
     TimeoutConfig   timeouts;
     std::string     node_id = "server1";
 };

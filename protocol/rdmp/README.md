@@ -145,31 +145,85 @@ Produces two binaries in `build/`:  `rdmp_client`  and  `rdmp_server`.
 
 ## Configuration
 
-Both binaries accept a single argument: the path to an INI-style config file.
+Both binaries accept a single argument: the path to a **JSON** config file.
 
 ```bash
-cp config/client.conf.example /etc/rdmp/client.conf
-cp config/server.conf.example /etc/rdmp/server.conf
+cp config/client.json /etc/rdmp/client.json
+cp config/server.json /etc/rdmp/server.json
 # Edit the files to match your environment
 ```
 
-Key configuration sections:
+### Full config schema
 
-| Section     | Key                         | Description                                     |
-|-------------|-----------------------------|-------------------------------------------------|
-| `multicast` | `group`                     | IPv4 multicast group (e.g. `239.1.2.3`)        |
-| `multicast` | `port`                      | UDP port (same for all nodes)                   |
-| `multicast` | `ttl`                       | Multicast IP TTL                                |
-| `multicast` | `interface`                 | Outbound / receive interface name (optional)    |
-| `s3`        | `endpoint`                  | Ceph/S3 HTTP base URL                           |
-| `s3`        | `bucket`                    | Shared task-queue bucket name                   |
-| `s3`        | `access_key` / `secret_key` | Credentials (leave empty for anonymous)         |
-| `timeouts`  | `task_execution_ms`         | Watchdog task-execution timeout                 |
-| `timeouts`  | `s3_poll_interval_ms`       | Client S3 poll interval                         |
-| `timeouts`  | `degradation_threshold_ms`  | Controller latency alert threshold              |
-| `timeouts`  | `multicast_repeat_count`    | Number of UDP sends per task burst              |
-| `timeouts`  | `multicast_repeat_interval_ms` | Interval (ms) between burst datagrams        |
-| `node`      | `id`                        | Unique node identifier                          |
+```json
+{
+    "global": {
+        "synctype": "s3"
+    },
+    "multicast": {
+        "group": "239.1.2.3",
+        "port": 5000,
+        "ttl": 32,
+        "interface": ""
+    },
+    "s3": {
+        "endpoint": "http://s3.internal.example.com:9000",
+        "bucket": "rdmp-tasks",
+        "access_key": "your-access-key",
+        "secret_key": "your-secret-key",
+        "region": "us-east-1"
+    },
+    "local_files": {
+        "base_path": "/tmp/rdmp-tasks"
+    },
+    "timeouts": {
+        "task_execution_ms": 5000,
+        "s3_poll_interval_ms": 1000,
+        "degradation_threshold_ms": 2000,
+        "watchdog_interval_ms": 2000,
+        "retry_delay_ms": 3000,
+        "multicast_repeat_count": 3,
+        "multicast_repeat_interval_ms": 100
+    },
+    "node": {
+        "id": "client1"
+    }
+}
+```
+
+All fields are optional and fall back to defaults when omitted.
+
+### Key configuration fields
+
+| Section       | Key                            | Description                                      |
+|---------------|--------------------------------|--------------------------------------------------|
+| `global`      | `synctype`                     | `"s3"` (default) or `"local-files"` (testing)   |
+| `multicast`   | `group`                        | IPv4 multicast group (e.g. `239.1.2.3`)         |
+| `multicast`   | `port`                         | UDP port (same for all nodes)                    |
+| `multicast`   | `ttl`                          | Multicast IP TTL                                 |
+| `multicast`   | `interface`                    | Outbound / receive interface name (optional)     |
+| `s3`          | `endpoint`                     | Ceph/S3 HTTP base URL                            |
+| `s3`          | `bucket`                       | Shared task-queue bucket name                    |
+| `s3`          | `access_key` / `secret_key`    | Credentials (leave empty for anonymous)          |
+| `local_files` | `base_path`                    | Root directory for the local-files backend       |
+| `timeouts`    | `task_execution_ms`            | Watchdog task-execution timeout                  |
+| `timeouts`    | `s3_poll_interval_ms`          | Client backend poll interval                     |
+| `timeouts`    | `degradation_threshold_ms`     | Controller latency alert threshold               |
+| `timeouts`    | `multicast_repeat_count`       | Number of UDP sends per task burst               |
+| `timeouts`    | `multicast_repeat_interval_ms` | Interval (ms) between burst datagrams            |
+| `node`        | `id`                           | Unique node identifier                           |
+
+### Storage backends
+
+RDMP supports two backends, selected via `global.synctype`:
+
+| Value          | Description                                                       |
+|----------------|-------------------------------------------------------------------|
+| `"s3"`         | AWS S3 / Ceph-compatible object storage (default, production)    |
+| `"local-files"`| Filesystem-backed storage under `local_files.base_path` (testing)|
+
+The `local-files` backend writes files atomically (write to `.tmp` then `rename`) and
+is fully compatible with all RDMP reliability guarantees for single-host testing.
 
 ---
 
@@ -178,19 +232,19 @@ Key configuration sections:
 ### Start servers (on each server host)
 
 ```bash
-./build/rdmp_server /etc/rdmp/server.conf
+./build/rdmp_server /etc/rdmp/server.json
 ```
 
 ### Start clients in relay mode
 
 ```bash
-./build/rdmp_client /etc/rdmp/client.conf
+./build/rdmp_client /etc/rdmp/client.json
 ```
 
 ### Submit a one-shot task
 
 ```bash
-./build/rdmp_client /etc/rdmp/client.conf "scale-out node-42"
+./build/rdmp_client /etc/rdmp/client.json "scale-out node-42"
 # → Task UUID: 550e8400-e29b-41d4-a716-446655440000
 ```
 
@@ -199,7 +253,7 @@ Key configuration sections:
 ```cpp
 #include "rdmp_client.hpp"
 
-rdmp::RDMPClient client("/etc/rdmp/client.conf");
+rdmp::RDMPClient client("/etc/rdmp/client.json");
 std::string uuid = client.addNewTask("my-control-plane-message");
 
 // Event loop integration (call from your own loop):
@@ -214,7 +268,7 @@ while (running) {
 ```cpp
 #include "rdmp_server.hpp"
 
-rdmp::RDMPServer server("/etc/rdmp/server.conf");
+rdmp::RDMPServer server("/etc/rdmp/server.json");
 
 server.setTaskHandler([](const std::string& uuid,
                          const std::string& payload) -> std::string {
@@ -228,15 +282,55 @@ server.run();
 
 ---
 
+## Testing
+
+The test suite lives in `tests/` and uses GoogleTest (fetched automatically via CMake FetchContent).
+Tests run without any real S3 cluster or network sockets, using the `local-files` backend.
+
+### Run tests
+
+```bash
+cd protocol/rdmp
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j$(nproc)
+cd build && ctest --output-on-failure
+```
+
+### Test coverage
+
+| Test file                      | What is tested                                                    |
+|--------------------------------|-------------------------------------------------------------------|
+| `test_config.cpp`              | JSON config parsing, defaults, synctype, error handling           |
+| `test_common.cpp`              | UUID generation, task/status JSON round-trips, status conversions |
+| `test_local_files_backend.cpp` | put/get, list, overwrite, atomic writes, concurrent backends      |
+| `test_wire_format.cpp`         | UDP datagram serialisation/deserialisation, edge cases            |
+| `test_end_to_end.cpp`          | Full task lifecycle, jitter, retries, node failures, races        |
+
+The end-to-end tests specifically cover:
+
+- Basic lifecycle (store → claim → execute → completed)
+- Multiple concurrent tasks
+- Duplicate announces (idempotent execution)
+- Claim race between two servers (exactly-once guarantee)
+- Multiple burst sends (idempotent)
+- Client node failure – task discovered via backend polling
+- Jitter – delayed second announce after task already completed
+- Send delay – announce ignored when task already executed by peer
+- Watchdog retry after executor crash (server node failure)
+- Handler exceptions – task marked FAILED
+- Multi-client relay scenario
+
+---
+
 ## Reliability Guarantees
 
-| Property                  | Mechanism                                                   |
-|---------------------------|-------------------------------------------------------------|
-| At-least-once delivery    | Each client bursts N UDP datagrams; multiple clients relay  |
-| Exactly-once execution    | S3 optimistic claim (PUT → GET verify)                      |
-| Crash recovery            | Watchdog re-claims stale EXECUTING tasks after timeout      |
-| Degraded controller alert | Per-source receipt-time comparison on servers               |
-| No SPOF                   | All state in shared S3; any node can retry any task         |
+| Property                  | Mechanism                                                         |
+|---------------------------|-------------------------------------------------------------------|
+| At-least-once delivery    | Each client bursts N UDP datagrams; multiple clients relay        |
+| Exactly-once execution    | Backend optimistic claim (PUT → GET verify)                       |
+| Crash recovery            | Watchdog re-claims stale EXECUTING tasks after timeout            |
+| Degraded controller alert | Per-source receipt-time comparison on servers                     |
+| No SPOF                   | All state in shared backend; any node can retry any task          |
 
 ---
 
