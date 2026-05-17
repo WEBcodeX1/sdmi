@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <map>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ static constexpr size_t RDMP_HEADER_SIZE = 46u;
 enum class MsgType : uint8_t {
     TASK_ANNOUNCE = 0x01,
     HEARTBEAT     = 0x02,
+    OBJECT_PUT    = 0x03,   // multicast-reply: key/value datagram on reply group
 };
 
 // ---------------------------------------------------------------------------
@@ -46,8 +48,8 @@ TaskStatus     stringToTaskStatus(const std::string& s);
 // Configuration structures  (loaded from JSON config files)
 // ---------------------------------------------------------------------------
 
-// Sync backend selector: "s3" or "local-files"
-enum class SyncType { S3, LocalFiles };
+// Sync backend selector: "s3", "local-files", or "multicast-reply"
+enum class SyncType { S3, LocalFiles, MulticastReply };
 
 struct GlobalConfig {
     SyncType synctype = SyncType::S3;
@@ -58,6 +60,15 @@ struct MulticastConfig {
     uint16_t    port           = 5000;
     uint8_t     ttl            = 32;
     std::string iface          = "";      // bind interface (optional)
+};
+
+// Reply multicast group used by servers to send status back to clients.
+// All client nodes subscribe to this group.
+struct MulticastReplyConfig {
+    std::string group          = "239.1.2.4";  // different group from main
+    uint16_t    port           = 5001;
+    uint8_t     ttl            = 32;
+    std::string iface          = "";
 };
 
 struct S3Config {
@@ -83,21 +94,23 @@ struct TimeoutConfig {
 };
 
 struct ClientConfig {
-    GlobalConfig    global;
-    MulticastConfig multicast;
-    S3Config        s3;
-    LocalFilesConfig local_files;
-    TimeoutConfig   timeouts;
-    std::string     node_id = "client1";
+    GlobalConfig         global;
+    MulticastConfig      multicast;
+    MulticastReplyConfig multicast_reply;
+    S3Config             s3;
+    LocalFilesConfig     local_files;
+    TimeoutConfig        timeouts;
+    std::string          node_id = "client1";
 };
 
 struct ServerConfig {
-    GlobalConfig    global;
-    MulticastConfig multicast;
-    S3Config        s3;
-    LocalFilesConfig local_files;
-    TimeoutConfig   timeouts;
-    std::string     node_id = "server1";
+    GlobalConfig         global;
+    MulticastConfig      multicast;
+    MulticastReplyConfig multicast_reply;
+    S3Config             s3;
+    LocalFilesConfig     local_files;
+    TimeoutConfig        timeouts;
+    std::string          node_id = "server1";
 };
 
 // ---------------------------------------------------------------------------
@@ -133,6 +146,36 @@ std::string buildStatusJson(const TaskStatusRecord& r);
 Task             parseTask(const std::string& json);
 TaskStatusRecord parseTaskStatus(const std::string& json);
 std::string      extractJsonField(const std::string& json, const std::string& key);
+
+// Stream operators for enum types (required by Boost::Test BOOST_CHECK_EQUAL)
+inline std::ostream& operator<<(std::ostream& os, SyncType s) {
+    switch (s) {
+    case SyncType::S3:             return os << "S3";
+    case SyncType::LocalFiles:     return os << "LocalFiles";
+    case SyncType::MulticastReply: return os << "MulticastReply";
+    default:                       return os << "Unknown";
+    }
+}
+
+inline std::ostream& operator<<(std::ostream& os, TaskStatus s) {
+    switch (s) {
+    case TaskStatus::UNKNOWN:   return os << "UNKNOWN";
+    case TaskStatus::PENDING:   return os << "PENDING";
+    case TaskStatus::EXECUTING: return os << "EXECUTING";
+    case TaskStatus::COMPLETED: return os << "COMPLETED";
+    case TaskStatus::FAILED:    return os << "FAILED";
+    default:                    return os << "?";
+    }
+}
+
+inline std::ostream& operator<<(std::ostream& os, MsgType m) {
+    switch (m) {
+    case MsgType::TASK_ANNOUNCE: return os << "TASK_ANNOUNCE";
+    case MsgType::HEARTBEAT:     return os << "HEARTBEAT";
+    case MsgType::OBJECT_PUT:    return os << "OBJECT_PUT";
+    default:                     return os << "Unknown";
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Config loaders

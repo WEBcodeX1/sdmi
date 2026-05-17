@@ -8,75 +8,75 @@
 //  - buildStatusJson / parseTaskStatus round-trip
 //  - extractJsonField edge cases
 
-#include <gtest/gtest.h>
+#include <boost/test/unit_test.hpp>
 
 #include "rdmp_common.hpp"
 
 #include <regex>
 #include <string>
 
-namespace {
+BOOST_AUTO_TEST_SUITE(CommonTest)
 
 // ---------------------------------------------------------------------------
 // TaskStatus conversions
 // ---------------------------------------------------------------------------
 
-TEST(CommonTest, TaskStatusRoundTrip) {
+BOOST_AUTO_TEST_CASE(TaskStatusRoundTrip) {
     using rdmp::TaskStatus;
-    EXPECT_EQ(rdmp::stringToTaskStatus(rdmp::taskStatusToString(TaskStatus::PENDING)),
-              TaskStatus::PENDING);
-    EXPECT_EQ(rdmp::stringToTaskStatus(rdmp::taskStatusToString(TaskStatus::EXECUTING)),
-              TaskStatus::EXECUTING);
-    EXPECT_EQ(rdmp::stringToTaskStatus(rdmp::taskStatusToString(TaskStatus::COMPLETED)),
-              TaskStatus::COMPLETED);
-    EXPECT_EQ(rdmp::stringToTaskStatus(rdmp::taskStatusToString(TaskStatus::FAILED)),
-              TaskStatus::FAILED);
+    BOOST_CHECK_EQUAL(rdmp::stringToTaskStatus(rdmp::taskStatusToString(TaskStatus::PENDING)),
+                      TaskStatus::PENDING);
+    BOOST_CHECK_EQUAL(rdmp::stringToTaskStatus(rdmp::taskStatusToString(TaskStatus::EXECUTING)),
+                      TaskStatus::EXECUTING);
+    BOOST_CHECK_EQUAL(rdmp::stringToTaskStatus(rdmp::taskStatusToString(TaskStatus::COMPLETED)),
+                      TaskStatus::COMPLETED);
+    BOOST_CHECK_EQUAL(rdmp::stringToTaskStatus(rdmp::taskStatusToString(TaskStatus::FAILED)),
+                      TaskStatus::FAILED);
 }
 
-TEST(CommonTest, TaskStatusUnknown) {
-    EXPECT_EQ(rdmp::stringToTaskStatus("bogus"), rdmp::TaskStatus::UNKNOWN);
-    EXPECT_EQ(rdmp::taskStatusToString(rdmp::TaskStatus::UNKNOWN), "unknown");
+BOOST_AUTO_TEST_CASE(TaskStatusUnknown) {
+    BOOST_CHECK_EQUAL(rdmp::stringToTaskStatus("bogus"), rdmp::TaskStatus::UNKNOWN);
+    BOOST_CHECK_EQUAL(rdmp::taskStatusToString(rdmp::TaskStatus::UNKNOWN), "unknown");
 }
 
 // ---------------------------------------------------------------------------
 // Time helpers
 // ---------------------------------------------------------------------------
 
-TEST(CommonTest, CurrentTimeMsIsReasonable) {
+BOOST_AUTO_TEST_CASE(CurrentTimeMsIsReasonable) {
     // Should be somewhere after 2024-01-01 (epoch ~1704067200000 ms)
-    EXPECT_GT(rdmp::currentTimeMs(), static_cast<int64_t>(1704067200000LL));
+    BOOST_CHECK_GT(rdmp::currentTimeMs(), static_cast<int64_t>(1704067200000LL));
 }
 
-TEST(CommonTest, CurrentTimestampFormat) {
+BOOST_AUTO_TEST_CASE(CurrentTimestampFormat) {
     std::string ts = rdmp::currentTimestamp();
     // Expected: "YYYY-MM-DDTHH:MM:SSZ"
     std::regex re(R"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)");
-    EXPECT_TRUE(std::regex_match(ts, re)) << "timestamp was: " << ts;
+    BOOST_CHECK_MESSAGE(std::regex_match(ts, re), "timestamp was: " + ts);
 }
 
 // ---------------------------------------------------------------------------
 // UUID generation
 // ---------------------------------------------------------------------------
 
-TEST(CommonTest, GenerateUUIDFormat) {
+BOOST_AUTO_TEST_CASE(GenerateUUIDFormat) {
     const std::string uuid = rdmp::generateUUID();
-    EXPECT_EQ(uuid.size(), 36u);
+    BOOST_CHECK_EQUAL(uuid.size(), 36u);
     // Pattern: 8-4-4-4-12 hex digits
     std::regex re("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
-    EXPECT_TRUE(std::regex_match(uuid, re)) << "uuid was: " << uuid;
+    BOOST_CHECK_MESSAGE(std::regex_match(uuid, re), "uuid was: " + uuid);
 }
 
-TEST(CommonTest, GenerateUUIDUnique) {
+BOOST_AUTO_TEST_CASE(GenerateUUIDUnique) {
     std::string a = rdmp::generateUUID();
     std::string b = rdmp::generateUUID();
-    EXPECT_NE(a, b);
+    BOOST_CHECK_NE(a, b);
 }
 
 // ---------------------------------------------------------------------------
 // Task JSON round-trip
 // ---------------------------------------------------------------------------
 
-TEST(CommonTest, TaskJsonRoundTrip) {
+BOOST_AUTO_TEST_CASE(TaskJsonRoundTrip) {
     rdmp::Task t;
     t.uuid       = rdmp::generateUUID();
     t.payload    = "hello world";
@@ -86,13 +86,13 @@ TEST(CommonTest, TaskJsonRoundTrip) {
     const std::string json = rdmp::buildTaskJson(t);
     const rdmp::Task  back = rdmp::parseTask(json);
 
-    EXPECT_EQ(back.uuid,       t.uuid);
-    EXPECT_EQ(back.payload,    t.payload);
-    EXPECT_EQ(back.created_by, t.created_by);
-    EXPECT_EQ(back.created_at, t.created_at);
+    BOOST_CHECK_EQUAL(back.uuid,       t.uuid);
+    BOOST_CHECK_EQUAL(back.payload,    t.payload);
+    BOOST_CHECK_EQUAL(back.created_by, t.created_by);
+    BOOST_CHECK_EQUAL(back.created_at, t.created_at);
 }
 
-TEST(CommonTest, TaskJsonSpecialChars) {
+BOOST_AUTO_TEST_CASE(TaskJsonSpecialChars) {
     rdmp::Task t;
     t.uuid       = rdmp::generateUUID();
     t.payload    = "line1\nline2\ttab\"quote\\backslash";
@@ -102,14 +102,14 @@ TEST(CommonTest, TaskJsonSpecialChars) {
     const std::string json = rdmp::buildTaskJson(t);
     const rdmp::Task  back = rdmp::parseTask(json);
 
-    EXPECT_EQ(back.payload, t.payload);
+    BOOST_CHECK_EQUAL(back.payload, t.payload);
 }
 
 // ---------------------------------------------------------------------------
 // TaskStatusRecord JSON round-trip
 // ---------------------------------------------------------------------------
 
-TEST(CommonTest, StatusJsonRoundTrip) {
+BOOST_AUTO_TEST_CASE(StatusJsonRoundTrip) {
     rdmp::TaskStatusRecord r;
     r.uuid       = rdmp::generateUUID();
     r.status     = rdmp::TaskStatus::COMPLETED;
@@ -120,29 +120,30 @@ TEST(CommonTest, StatusJsonRoundTrip) {
     const std::string        json = rdmp::buildStatusJson(r);
     const rdmp::TaskStatusRecord back = rdmp::parseTaskStatus(json);
 
-    EXPECT_EQ(back.uuid,       r.uuid);
-    EXPECT_EQ(back.status,     r.status);
-    EXPECT_EQ(back.server_id,  r.server_id);
-    EXPECT_EQ(back.updated_at, r.updated_at);
-    EXPECT_EQ(back.result,     r.result);
+    BOOST_CHECK_EQUAL(back.uuid,       r.uuid);
+    BOOST_CHECK_EQUAL(back.status,     r.status);
+    BOOST_CHECK_EQUAL(back.server_id,  r.server_id);
+    BOOST_CHECK_EQUAL(back.updated_at, r.updated_at);
+    BOOST_CHECK_EQUAL(back.result,     r.result);
 }
 
 // ---------------------------------------------------------------------------
 // extractJsonField edge cases
 // ---------------------------------------------------------------------------
 
-TEST(CommonTest, ExtractJsonFieldMissing) {
-    EXPECT_EQ(rdmp::extractJsonField("{}", "missing"), "");
+BOOST_AUTO_TEST_CASE(ExtractJsonFieldMissing) {
+    BOOST_CHECK_EQUAL(rdmp::extractJsonField("{}", "missing"), "");
 }
 
-TEST(CommonTest, ExtractJsonFieldNumeric) {
+BOOST_AUTO_TEST_CASE(ExtractJsonFieldNumeric) {
     const std::string json = R"({"count":42})";
-    EXPECT_EQ(rdmp::extractJsonField(json, "count"), "42");
+    BOOST_CHECK_EQUAL(rdmp::extractJsonField(json, "count"), "42");
 }
 
-TEST(CommonTest, ExtractJsonFieldBool) {
+BOOST_AUTO_TEST_CASE(ExtractJsonFieldBool) {
     const std::string json = R"({"ok":true})";
-    EXPECT_EQ(rdmp::extractJsonField(json, "ok"), "true");
+    BOOST_CHECK_EQUAL(rdmp::extractJsonField(json, "ok"), "true");
 }
 
-} // namespace
+BOOST_AUTO_TEST_SUITE_END()
+

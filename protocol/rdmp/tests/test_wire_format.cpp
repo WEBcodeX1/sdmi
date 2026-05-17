@@ -4,7 +4,7 @@
 // exercising the same byte layout that RDMPClient::sendMulticast() produces
 // and RDMPServer::receiveAndProcess() consumes.
 
-#include <gtest/gtest.h>
+#include <boost/test/unit_test.hpp>
 
 #include "rdmp_common.hpp"
 
@@ -83,92 +83,93 @@ ParsedDatagram parseDatagram(const std::vector<uint8_t>& buf) {
     return d;
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+} // anonymous namespace
 
-TEST(WireFormatTest, HeaderSizeConstant) {
+BOOST_AUTO_TEST_SUITE(WireFormatTest)
+
+BOOST_AUTO_TEST_CASE(HeaderSizeConstant) {
     // Documented: 4+1+1+36+4 = 46
-    EXPECT_EQ(rdmp::RDMP_HEADER_SIZE, 46u);
+    BOOST_CHECK_EQUAL(rdmp::RDMP_HEADER_SIZE, 46u);
 }
 
-TEST(WireFormatTest, MagicConstant) {
+BOOST_AUTO_TEST_CASE(MagicConstant) {
     // 'R','D','M','P'
-    EXPECT_EQ(rdmp::RDMP_MAGIC, 0x52444D50u);
+    BOOST_CHECK_EQUAL(rdmp::RDMP_MAGIC, 0x52444D50u);
 }
 
-TEST(WireFormatTest, TaskAnnounceRoundTrip) {
+BOOST_AUTO_TEST_CASE(TaskAnnounceRoundTrip) {
     const std::string uuid    = rdmp::generateUUID();
     const std::string payload = "scale-out node-7";
 
     auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, payload);
-    ASSERT_EQ(buf.size(), rdmp::RDMP_HEADER_SIZE + payload.size());
+    BOOST_REQUIRE_EQUAL(buf.size(), rdmp::RDMP_HEADER_SIZE + payload.size());
 
     auto d = parseDatagram(buf);
-    EXPECT_TRUE(d.valid);
-    EXPECT_EQ(d.version,  rdmp::RDMP_VERSION);
-    EXPECT_EQ(d.msg_type, rdmp::MsgType::TASK_ANNOUNCE);
-    EXPECT_EQ(d.uuid,     uuid);
-    EXPECT_EQ(d.payload,  payload);
+    BOOST_CHECK(d.valid);
+    BOOST_CHECK_EQUAL(d.version,  rdmp::RDMP_VERSION);
+    BOOST_CHECK_EQUAL(d.msg_type, rdmp::MsgType::TASK_ANNOUNCE);
+    BOOST_CHECK_EQUAL(d.uuid,     uuid);
+    BOOST_CHECK_EQUAL(d.payload,  payload);
 }
 
-TEST(WireFormatTest, HeartbeatRoundTrip) {
+BOOST_AUTO_TEST_CASE(HeartbeatRoundTrip) {
     const std::string uuid    = rdmp::generateUUID();
     const std::string payload = "";
 
     auto buf = buildDatagram(uuid, rdmp::MsgType::HEARTBEAT, payload);
     auto d   = parseDatagram(buf);
 
-    EXPECT_TRUE(d.valid);
-    EXPECT_EQ(d.msg_type, rdmp::MsgType::HEARTBEAT);
-    EXPECT_EQ(d.payload,  "");
+    BOOST_CHECK(d.valid);
+    BOOST_CHECK_EQUAL(d.msg_type, rdmp::MsgType::HEARTBEAT);
+    BOOST_CHECK_EQUAL(d.payload,  "");
 }
 
-TEST(WireFormatTest, EmptyPayload) {
+BOOST_AUTO_TEST_CASE(EmptyPayload) {
     const std::string uuid = rdmp::generateUUID();
     auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, "");
-    EXPECT_EQ(buf.size(), rdmp::RDMP_HEADER_SIZE);
+    BOOST_CHECK_EQUAL(buf.size(), rdmp::RDMP_HEADER_SIZE);
 
     auto d = parseDatagram(buf);
-    EXPECT_TRUE(d.valid);
-    EXPECT_EQ(d.payload, "");
+    BOOST_CHECK(d.valid);
+    BOOST_CHECK_EQUAL(d.payload, "");
 }
 
-TEST(WireFormatTest, LargePayload) {
+BOOST_AUTO_TEST_CASE(LargePayload) {
     const std::string uuid    = rdmp::generateUUID();
     const std::string payload(4096, 'z');
 
     auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, payload);
     auto d   = parseDatagram(buf);
 
-    EXPECT_TRUE(d.valid);
-    EXPECT_EQ(d.payload, payload);
+    BOOST_CHECK(d.valid);
+    BOOST_CHECK_EQUAL(d.payload, payload);
 }
 
-TEST(WireFormatTest, TruncatedDatagram) {
+BOOST_AUTO_TEST_CASE(TruncatedDatagram) {
     // Shorter than RDMP_HEADER_SIZE
     std::vector<uint8_t> short_buf(20, 0);
     auto d = parseDatagram(short_buf);
-    EXPECT_FALSE(d.valid);
+    BOOST_CHECK(!d.valid);
 }
 
-TEST(WireFormatTest, WrongMagic) {
+BOOST_AUTO_TEST_CASE(WrongMagic) {
     const std::string uuid = rdmp::generateUUID();
     auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, "test");
     // Corrupt the magic number
     buf[0] = 0xFF;
     auto d = parseDatagram(buf);
-    EXPECT_FALSE(d.valid);
+    BOOST_CHECK(!d.valid);
 }
 
-TEST(WireFormatTest, PayloadLengthOverflow) {
+BOOST_AUTO_TEST_CASE(PayloadLengthOverflow) {
     const std::string uuid = rdmp::generateUUID();
     auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, "x");
     // Set payload_len to something larger than the buffer
     uint32_t big = htonl(99999);
     memcpy(buf.data() + 42, &big, 4);
     auto d = parseDatagram(buf);
-    EXPECT_FALSE(d.valid);
+    BOOST_CHECK(!d.valid);
 }
 
-} // namespace
+BOOST_AUTO_TEST_SUITE_END()
+

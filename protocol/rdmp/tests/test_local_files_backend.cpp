@@ -8,7 +8,7 @@
 //  - Overwrite of existing objects
 //  - Nested key paths (e.g. "tasks/<uuid>")
 
-#include <gtest/gtest.h>
+#include <boost/test/unit_test.hpp>
 
 #include "rdmp_local_files.hpp"
 #include "rdmp_common.hpp"
@@ -19,19 +19,15 @@
 
 namespace fs = std::filesystem;
 
-namespace {
-
 // ---------------------------------------------------------------------------
 // Fixture: creates a unique temp directory per test
 // ---------------------------------------------------------------------------
 
-class LocalFilesBackendTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        // Create a unique temporary base directory
+struct LocalFilesBackendFixture {
+    LocalFilesBackendFixture() {
         char tmpl[] = "/tmp/rdmp_lf_test_XXXXXX";
         const char* dir = mkdtemp(tmpl);
-        ASSERT_NE(dir, nullptr);
+        BOOST_REQUIRE(dir != nullptr);
         base_dir_ = dir;
 
         rdmp::LocalFilesConfig cfg;
@@ -39,8 +35,7 @@ protected:
         backend_ = std::make_unique<rdmp::LocalFilesBackend>(cfg);
     }
 
-    void TearDown() override {
-        // Remove the test directory tree
+    ~LocalFilesBackendFixture() {
         fs::remove_all(base_dir_);
     }
 
@@ -48,45 +43,47 @@ protected:
     std::unique_ptr<rdmp::LocalFilesBackend> backend_;
 };
 
+BOOST_FIXTURE_TEST_SUITE(LocalFilesBackendTest, LocalFilesBackendFixture)
+
 // ---------------------------------------------------------------------------
 // Basic put / get round-trip
 // ---------------------------------------------------------------------------
 
-TEST_F(LocalFilesBackendTest, PutGetRoundTrip) {
+BOOST_AUTO_TEST_CASE(PutGetRoundTrip) {
     const std::string key  = "tasks/abc123";
     const std::string body = R"({"uuid":"abc123","payload":"hello"})";
 
-    EXPECT_TRUE(backend_->putObject(key, body));
+    BOOST_CHECK(backend_->putObject(key, body));
 
     const std::string got = backend_->getObject(key);
-    EXPECT_EQ(got, body);
+    BOOST_CHECK_EQUAL(got, body);
 }
 
-TEST_F(LocalFilesBackendTest, GetMissingReturnsEmpty) {
-    EXPECT_EQ(backend_->getObject("tasks/nonexistent"), "");
+BOOST_AUTO_TEST_CASE(GetMissingReturnsEmpty) {
+    BOOST_CHECK_EQUAL(backend_->getObject("tasks/nonexistent"), "");
 }
 
 // ---------------------------------------------------------------------------
 // Overwrite
 // ---------------------------------------------------------------------------
 
-TEST_F(LocalFilesBackendTest, Overwrite) {
+BOOST_AUTO_TEST_CASE(Overwrite) {
     const std::string key = "status/uuid1";
-    EXPECT_TRUE(backend_->putObject(key, "first"));
-    EXPECT_TRUE(backend_->putObject(key, "second"));
-    EXPECT_EQ(backend_->getObject(key), "second");
+    BOOST_CHECK(backend_->putObject(key, "first"));
+    BOOST_CHECK(backend_->putObject(key, "second"));
+    BOOST_CHECK_EQUAL(backend_->getObject(key), "second");
 }
 
 // ---------------------------------------------------------------------------
 // List objects
 // ---------------------------------------------------------------------------
 
-TEST_F(LocalFilesBackendTest, ListObjectsEmpty) {
+BOOST_AUTO_TEST_CASE(ListObjectsEmpty) {
     const auto keys = backend_->listObjects("tasks/");
-    EXPECT_TRUE(keys.empty());
+    BOOST_CHECK(keys.empty());
 }
 
-TEST_F(LocalFilesBackendTest, ListObjectsMultiple) {
+BOOST_AUTO_TEST_CASE(ListObjectsMultiple) {
     backend_->putObject("tasks/uuid-a", "body-a");
     backend_->putObject("tasks/uuid-b", "body-b");
     backend_->putObject("tasks/uuid-c", "body-c");
@@ -95,34 +92,34 @@ TEST_F(LocalFilesBackendTest, ListObjectsMultiple) {
     const auto task_keys   = backend_->listObjects("tasks/");
     const auto status_keys = backend_->listObjects("status/");
 
-    EXPECT_EQ(task_keys.size(),   3u);
-    EXPECT_EQ(status_keys.size(), 1u);
+    BOOST_CHECK_EQUAL(task_keys.size(),   3u);
+    BOOST_CHECK_EQUAL(status_keys.size(), 1u);
 
     // All task keys should start with "tasks/"
     for (const auto& k : task_keys)
-        EXPECT_EQ(k.substr(0, 6), "tasks/");
+        BOOST_CHECK_EQUAL(k.substr(0, 6), "tasks/");
 }
 
-TEST_F(LocalFilesBackendTest, ListObjectsContainsCorrectKeys) {
+BOOST_AUTO_TEST_CASE(ListObjectsContainsCorrectKeys) {
     backend_->putObject("tasks/my-uuid", "body");
 
     const auto keys = backend_->listObjects("tasks/");
-    ASSERT_EQ(keys.size(), 1u);
-    EXPECT_EQ(keys[0], "tasks/my-uuid");
+    BOOST_REQUIRE_EQUAL(keys.size(), 1u);
+    BOOST_CHECK_EQUAL(keys[0], "tasks/my-uuid");
 }
 
 // ---------------------------------------------------------------------------
 // Binary / large content
 // ---------------------------------------------------------------------------
 
-TEST_F(LocalFilesBackendTest, LargeBody) {
+BOOST_AUTO_TEST_CASE(LargeBody) {
     const std::string key  = "tasks/large";
     const std::string body(64 * 1024, 'x'); // 64 KB of 'x'
-    EXPECT_TRUE(backend_->putObject(key, body));
-    EXPECT_EQ(backend_->getObject(key), body);
+    BOOST_CHECK(backend_->putObject(key, body));
+    BOOST_CHECK_EQUAL(backend_->getObject(key), body);
 }
 
-TEST_F(LocalFilesBackendTest, JsonPayloadRoundTrip) {
+BOOST_AUTO_TEST_CASE(JsonPayloadRoundTrip) {
     // Simulate the actual task storage flow
     rdmp::Task t;
     t.uuid       = rdmp::generateUUID();
@@ -133,20 +130,20 @@ TEST_F(LocalFilesBackendTest, JsonPayloadRoundTrip) {
     const std::string key  = "tasks/" + t.uuid;
     const std::string body = rdmp::buildTaskJson(t);
 
-    EXPECT_TRUE(backend_->putObject(key, body));
+    BOOST_CHECK(backend_->putObject(key, body));
 
     const std::string got  = backend_->getObject(key);
     rdmp::Task        back = rdmp::parseTask(got);
 
-    EXPECT_EQ(back.uuid,    t.uuid);
-    EXPECT_EQ(back.payload, t.payload);
+    BOOST_CHECK_EQUAL(back.uuid,    t.uuid);
+    BOOST_CHECK_EQUAL(back.payload, t.payload);
 }
 
 // ---------------------------------------------------------------------------
 // Status record round-trip
 // ---------------------------------------------------------------------------
 
-TEST_F(LocalFilesBackendTest, StatusRecordRoundTrip) {
+BOOST_AUTO_TEST_CASE(StatusRecordRoundTrip) {
     rdmp::TaskStatusRecord r;
     r.uuid       = rdmp::generateUUID();
     r.status     = rdmp::TaskStatus::COMPLETED;
@@ -157,31 +154,32 @@ TEST_F(LocalFilesBackendTest, StatusRecordRoundTrip) {
     const std::string key  = "status/" + r.uuid;
     const std::string body = rdmp::buildStatusJson(r);
 
-    EXPECT_TRUE(backend_->putObject(key, body));
+    BOOST_CHECK(backend_->putObject(key, body));
 
     const std::string          got  = backend_->getObject(key);
     rdmp::TaskStatusRecord     back = rdmp::parseTaskStatus(got);
 
-    EXPECT_EQ(back.uuid,      r.uuid);
-    EXPECT_EQ(back.status,    r.status);
-    EXPECT_EQ(back.server_id, r.server_id);
-    EXPECT_EQ(back.result,    r.result);
+    BOOST_CHECK_EQUAL(back.uuid,      r.uuid);
+    BOOST_CHECK_EQUAL(back.status,    r.status);
+    BOOST_CHECK_EQUAL(back.server_id, r.server_id);
+    BOOST_CHECK_EQUAL(back.result,    r.result);
 }
 
 // ---------------------------------------------------------------------------
 // Multiple independent backends sharing the same directory
 // ---------------------------------------------------------------------------
 
-TEST_F(LocalFilesBackendTest, TwoBackendsSameDir) {
+BOOST_AUTO_TEST_CASE(TwoBackendsSameDir) {
     rdmp::LocalFilesConfig cfg;
     cfg.base_path = base_dir_;
     rdmp::LocalFilesBackend b2(cfg);
 
     backend_->putObject("tasks/shared-uuid", "from-b1");
-    EXPECT_EQ(b2.getObject("tasks/shared-uuid"), "from-b1");
+    BOOST_CHECK_EQUAL(b2.getObject("tasks/shared-uuid"), "from-b1");
 
     b2.putObject("tasks/shared-uuid", "from-b2");
-    EXPECT_EQ(backend_->getObject("tasks/shared-uuid"), "from-b2");
+    BOOST_CHECK_EQUAL(backend_->getObject("tasks/shared-uuid"), "from-b2");
 }
 
-} // namespace
+BOOST_AUTO_TEST_SUITE_END()
+

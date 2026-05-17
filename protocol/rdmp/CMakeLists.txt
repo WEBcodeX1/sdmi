@@ -20,8 +20,13 @@ add_library(rdmp_core STATIC
     src/rdmp_common.cpp
     src/rdmp_s3.cpp
     src/rdmp_local_files.cpp
+    src/rdmp_multicast_reply.cpp
     src/rdmp_backend.cpp
 )
+
+# Position-independent code is required so rdmp_core can be linked into the
+# Python extension module (a shared library).
+set_target_properties(rdmp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(rdmp_core PUBLIC include)
 
@@ -60,6 +65,17 @@ target_link_libraries(rdmp_server PRIVATE rdmp_core)
 
 enable_testing()
 add_subdirectory(tests)
+
+# ---------------------------------------------------------------------------
+# Python bindings (Boost.Python)
+# ---------------------------------------------------------------------------
+
+find_package(Python3 COMPONENTS Development QUIET)
+if(Python3_FOUND)
+    add_subdirectory(python)
+else()
+    message(STATUS "Python3 not found – skipping Boost.Python bindings")
+endif()
 
 # ---------------------------------------------------------------------------
 # Install targets (optional)
