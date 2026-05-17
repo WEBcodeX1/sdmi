@@ -15,13 +15,13 @@ Both the client and server are **single-threaded** and event-loop based.
 ## Architecture
 
 ```
-Client 1 ─┐                          ┌─ Server 1
-Client 2 ─┼──── UDP Multicast ────── ┼─ Server 2
-           │                          └─ Server 3
-           │
-           └──── S3 Bucket (shared task queue + status cache)
-                         ▲
-                         │  All nodes read/write task/status objects
+Client 1 ─┐                            ┌─ Server 1
+Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
+          │                            └─ Server 3
+          │
+          └──── S3 Bucket / Memcache (shared task queue + status cache)
+                ▲
+                │  All nodes read / write task / status objects
 ```
 
 ### Client (MSG Distributor Client)
