@@ -34,6 +34,10 @@ public:
 
     // List all keys with the given prefix.  Returns matching key strings.
     virtual std::vector<std::string> listObjects(const std::string& prefix) = 0;
+
+    // Process any pending incoming data (e.g. drain the receive socket for
+    // multicast-reply backends).  No-op for S3 and local-files backends.
+    virtual void sync() {}
 };
 
 // ---------------------------------------------------------------------------

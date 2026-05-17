@@ -3,10 +3,12 @@
 // Tests cover:
 //  - Valid client and server config files
 //  - Default values when optional fields are absent
-//  - The global.synctype field ("s3" and "local-files")
+//  - The global.synctype field ("s3", "local-files", "multicast-reply")
+//  - multicast_reply section parsing
 //  - Error handling for missing / malformed files
 
-#include <gtest/gtest.h>
+#define BOOST_TEST_MODULE RdmpTests
+#include <boost/test/unit_test.hpp>
 
 #include "rdmp_common.hpp"
 
@@ -24,24 +26,33 @@ std::string writeTmpJson(const std::string& content) {
     char path[] = "/tmp/rdmp_test_config_XXXXXX";
     int fd = mkstemp(path);
     if (fd < 0) throw std::runtime_error("mkstemp failed");
-    // Write via ofstream for simplicity
     close(fd);
     std::ofstream f(path);
     f << content;
     return std::string(path);
 }
 
+} // namespace
+
+BOOST_AUTO_TEST_SUITE(ConfigTest)
+
 // ---------------------------------------------------------------------------
 // Client config – full valid JSON
 // ---------------------------------------------------------------------------
 
-TEST(ConfigTest, ClientFullConfig) {
+BOOST_AUTO_TEST_CASE(ClientFullConfig) {
     const std::string json = R"({
         "global": { "synctype": "s3" },
         "multicast": {
             "group": "239.9.9.9",
             "port": 6000,
             "ttl": 16,
+            "interface": "eth1"
+        },
+        "multicast_reply": {
+            "group": "239.9.9.10",
+            "port": 6001,
+            "ttl": 8,
             "interface": "eth1"
         },
         "s3": {
@@ -70,32 +81,36 @@ TEST(ConfigTest, ClientFullConfig) {
     const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
     std::remove(path.c_str());
 
-    EXPECT_EQ(cfg.global.synctype, rdmp::SyncType::S3);
-    EXPECT_EQ(cfg.multicast.group, "239.9.9.9");
-    EXPECT_EQ(cfg.multicast.port,  6000);
-    EXPECT_EQ(cfg.multicast.ttl,   16);
-    EXPECT_EQ(cfg.multicast.iface, "eth1");
-    EXPECT_EQ(cfg.s3.endpoint,     "http://mys3:9000");
-    EXPECT_EQ(cfg.s3.bucket,       "my-bucket");
-    EXPECT_EQ(cfg.s3.access_key,   "AKID");
-    EXPECT_EQ(cfg.s3.secret_key,   "SECRET");
-    EXPECT_EQ(cfg.s3.region,       "eu-west-1");
-    EXPECT_EQ(cfg.local_files.base_path, "/var/rdmp");
-    EXPECT_EQ(cfg.timeouts.task_execution_ms,        1000u);
-    EXPECT_EQ(cfg.timeouts.s3_poll_interval_ms,       500u);
-    EXPECT_EQ(cfg.timeouts.degradation_threshold_ms,  800u);
-    EXPECT_EQ(cfg.timeouts.watchdog_interval_ms,     1200u);
-    EXPECT_EQ(cfg.timeouts.retry_delay_ms,           2000u);
-    EXPECT_EQ(cfg.timeouts.multicast_repeat_count,      5u);
-    EXPECT_EQ(cfg.timeouts.multicast_repeat_interval_ms, 200u);
-    EXPECT_EQ(cfg.node_id, "myclient");
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::S3);
+    BOOST_CHECK_EQUAL(cfg.multicast.group, "239.9.9.9");
+    BOOST_CHECK_EQUAL(cfg.multicast.port,  6000);
+    BOOST_CHECK_EQUAL(cfg.multicast.ttl,   16);
+    BOOST_CHECK_EQUAL(cfg.multicast.iface, "eth1");
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.group, "239.9.9.10");
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.port,  6001);
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.ttl,   8);
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.iface, "eth1");
+    BOOST_CHECK_EQUAL(cfg.s3.endpoint,     "http://mys3:9000");
+    BOOST_CHECK_EQUAL(cfg.s3.bucket,       "my-bucket");
+    BOOST_CHECK_EQUAL(cfg.s3.access_key,   "AKID");
+    BOOST_CHECK_EQUAL(cfg.s3.secret_key,   "SECRET");
+    BOOST_CHECK_EQUAL(cfg.s3.region,       "eu-west-1");
+    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/var/rdmp");
+    BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,        1000u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,       500u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.degradation_threshold_ms,  800u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.watchdog_interval_ms,     1200u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.retry_delay_ms,           2000u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.multicast_repeat_count,      5u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.multicast_repeat_interval_ms, 200u);
+    BOOST_CHECK_EQUAL(cfg.node_id, "myclient");
 }
 
 // ---------------------------------------------------------------------------
 // Client config – local-files synctype
 // ---------------------------------------------------------------------------
 
-TEST(ConfigTest, ClientLocalFilesSynctype) {
+BOOST_AUTO_TEST_CASE(ClientLocalFilesSynctype) {
     const std::string json = R"({
         "global": { "synctype": "local-files" },
         "local_files": { "base_path": "/tmp/rdmp-test" },
@@ -106,45 +121,76 @@ TEST(ConfigTest, ClientLocalFilesSynctype) {
     const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
     std::remove(path.c_str());
 
-    EXPECT_EQ(cfg.global.synctype, rdmp::SyncType::LocalFiles);
-    EXPECT_EQ(cfg.local_files.base_path, "/tmp/rdmp-test");
-    EXPECT_EQ(cfg.node_id, "lf-client");
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::LocalFiles);
+    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/tmp/rdmp-test");
+    BOOST_CHECK_EQUAL(cfg.node_id, "lf-client");
+}
+
+// ---------------------------------------------------------------------------
+// Client config – multicast-reply synctype
+// ---------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(ClientMulticastReplySynctype) {
+    const std::string json = R"({
+        "global": { "synctype": "multicast-reply" },
+        "multicast_reply": {
+            "group": "239.2.3.4",
+            "port": 5002,
+            "ttl": 16,
+            "interface": ""
+        },
+        "node": { "id": "mr-client" }
+    })";
+
+    const std::string path = writeTmpJson(json);
+    const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
+    std::remove(path.c_str());
+
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::MulticastReply);
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.group, "239.2.3.4");
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.port,  5002u);
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.ttl,   16u);
+    BOOST_CHECK_EQUAL(cfg.node_id, "mr-client");
 }
 
 // ---------------------------------------------------------------------------
 // Client config – defaults when optional sections are absent
 // ---------------------------------------------------------------------------
 
-TEST(ConfigTest, ClientDefaults) {
+BOOST_AUTO_TEST_CASE(ClientDefaults) {
     const std::string json = R"({})";
 
     const std::string path = writeTmpJson(json);
     const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
     std::remove(path.c_str());
 
-    EXPECT_EQ(cfg.global.synctype, rdmp::SyncType::S3);
-    EXPECT_EQ(cfg.multicast.group, "239.1.2.3");
-    EXPECT_EQ(cfg.multicast.port,  5000u);
-    EXPECT_EQ(cfg.multicast.ttl,   32u);
-    EXPECT_EQ(cfg.multicast.iface, "");
-    EXPECT_EQ(cfg.s3.endpoint,     "http://localhost:9000");
-    EXPECT_EQ(cfg.s3.bucket,       "rdmp-tasks");
-    EXPECT_EQ(cfg.local_files.base_path, "/tmp/rdmp-tasks");
-    EXPECT_EQ(cfg.timeouts.task_execution_ms,        5000u);
-    EXPECT_EQ(cfg.timeouts.s3_poll_interval_ms,      1000u);
-    EXPECT_EQ(cfg.timeouts.degradation_threshold_ms, 2000u);
-    EXPECT_EQ(cfg.timeouts.watchdog_interval_ms,     2000u);
-    EXPECT_EQ(cfg.timeouts.retry_delay_ms,           3000u);
-    EXPECT_EQ(cfg.timeouts.multicast_repeat_count,      3u);
-    EXPECT_EQ(cfg.timeouts.multicast_repeat_interval_ms, 100u);
-    EXPECT_EQ(cfg.node_id, "client1");
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::S3);
+    BOOST_CHECK_EQUAL(cfg.multicast.group, "239.1.2.3");
+    BOOST_CHECK_EQUAL(cfg.multicast.port,  5000u);
+    BOOST_CHECK_EQUAL(cfg.multicast.ttl,   32u);
+    BOOST_CHECK_EQUAL(cfg.multicast.iface, "");
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.group, "239.1.2.4");
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.port,  5001u);
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.ttl,   32u);
+    BOOST_CHECK_EQUAL(cfg.multicast_reply.iface, "");
+    BOOST_CHECK_EQUAL(cfg.s3.endpoint,     "http://localhost:9000");
+    BOOST_CHECK_EQUAL(cfg.s3.bucket,       "rdmp-tasks");
+    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/tmp/rdmp-tasks");
+    BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,        5000u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,      1000u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.degradation_threshold_ms, 2000u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.watchdog_interval_ms,     2000u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.retry_delay_ms,           3000u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.multicast_repeat_count,      3u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.multicast_repeat_interval_ms, 100u);
+    BOOST_CHECK_EQUAL(cfg.node_id, "client1");
 }
 
 // ---------------------------------------------------------------------------
 // Server config – full valid JSON
 // ---------------------------------------------------------------------------
 
-TEST(ConfigTest, ServerFullConfig) {
+BOOST_AUTO_TEST_CASE(ServerFullConfig) {
     const std::string json = R"({
         "global": { "synctype": "local-files" },
         "multicast": { "group": "239.5.5.5", "port": 7000, "ttl": 8, "interface": "" },
@@ -158,38 +204,39 @@ TEST(ConfigTest, ServerFullConfig) {
     const rdmp::ServerConfig cfg = rdmp::loadServerConfig(path);
     std::remove(path.c_str());
 
-    EXPECT_EQ(cfg.global.synctype, rdmp::SyncType::LocalFiles);
-    EXPECT_EQ(cfg.multicast.group, "239.5.5.5");
-    EXPECT_EQ(cfg.multicast.port,  7000u);
-    EXPECT_EQ(cfg.local_files.base_path, "/srv/rdmp");
-    EXPECT_EQ(cfg.timeouts.task_execution_ms,   2000u);
-    EXPECT_EQ(cfg.timeouts.s3_poll_interval_ms,  250u);
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::LocalFiles);
+    BOOST_CHECK_EQUAL(cfg.multicast.group, "239.5.5.5");
+    BOOST_CHECK_EQUAL(cfg.multicast.port,  7000u);
+    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/srv/rdmp");
+    BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,   2000u);
+    BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,  250u);
     // Unset fields use defaults
-    EXPECT_EQ(cfg.timeouts.retry_delay_ms, 3000u);
-    EXPECT_EQ(cfg.node_id, "myserver");
+    BOOST_CHECK_EQUAL(cfg.timeouts.retry_delay_ms, 3000u);
+    BOOST_CHECK_EQUAL(cfg.node_id, "myserver");
 }
 
 // ---------------------------------------------------------------------------
 // Error cases
 // ---------------------------------------------------------------------------
 
-TEST(ConfigTest, MissingFile) {
-    EXPECT_THROW(rdmp::loadClientConfig("/nonexistent/path/config.json"),
-                 std::runtime_error);
+BOOST_AUTO_TEST_CASE(MissingFile) {
+    BOOST_CHECK_THROW(rdmp::loadClientConfig("/nonexistent/path/config.json"),
+                      std::runtime_error);
 }
 
-TEST(ConfigTest, MalformedJson) {
+BOOST_AUTO_TEST_CASE(MalformedJson) {
     const std::string path = writeTmpJson("{ this is not json }");
-    EXPECT_THROW(rdmp::loadClientConfig(path), std::runtime_error);
+    BOOST_CHECK_THROW(rdmp::loadClientConfig(path), std::runtime_error);
     std::remove(path.c_str());
 }
 
-TEST(ConfigTest, UnknownSynctypeFallsBackToS3) {
+BOOST_AUTO_TEST_CASE(UnknownSynctypeFallsBackToS3) {
     const std::string json = R"({ "global": { "synctype": "ftp" } })";
     const std::string path = writeTmpJson(json);
     const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
     std::remove(path.c_str());
-    EXPECT_EQ(cfg.global.synctype, rdmp::SyncType::S3);
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::S3);
 }
 
-} // namespace
+BOOST_AUTO_TEST_SUITE_END()
+

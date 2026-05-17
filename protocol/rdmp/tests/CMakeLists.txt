@@ -1,18 +1,10 @@
 cmake_minimum_required(VERSION 3.14)
 
 # ---------------------------------------------------------------------------
-# Fetch GoogleTest (header-only usage via FetchContent)
+# Boost.Test
 # ---------------------------------------------------------------------------
-include(FetchContent)
 
-FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.14.0
-)
-# Prevent gtest from overriding our compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+find_package(Boost 1.71 REQUIRED COMPONENTS unit_test_framework)
 
 # ---------------------------------------------------------------------------
 # Test executable
@@ -28,10 +20,14 @@ add_executable(rdmp_tests
 
 target_include_directories(rdmp_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 
-target_link_libraries(rdmp_tests PRIVATE
-    rdmp_core
-    GTest::gtest_main
+target_compile_definitions(rdmp_tests PRIVATE
+    BOOST_TEST_DYN_LINK
 )
 
-include(GoogleTest)
-gtest_discover_tests(rdmp_tests)
+target_link_libraries(rdmp_tests PRIVATE
+    rdmp_core
+    Boost::unit_test_framework
+)
+
+include(CTest)
+add_test(NAME rdmp_tests COMMAND rdmp_tests --log_level=message)

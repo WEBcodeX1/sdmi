@@ -16,7 +16,7 @@
 //     backend polling still discovers it
 //  9. Server node failure: timed-out EXECUTING task is re-claimed
 
-#include <gtest/gtest.h>
+#include <boost/test/unit_test.hpp>
 
 #include "rdmp_common.hpp"
 #include "rdmp_local_files.hpp"
@@ -266,12 +266,11 @@ private:
 // Test fixture
 // ---------------------------------------------------------------------------
 
-class EndToEndTest : public ::testing::Test {
-protected:
-    void SetUp() override {
+struct EndToEndFixture {
+    EndToEndFixture() {
         char tmpl[] = "/tmp/rdmp_e2e_XXXXXX";
         const char* dir = mkdtemp(tmpl);
-        ASSERT_NE(dir, nullptr);
+        BOOST_REQUIRE(dir != nullptr);
         base_dir_ = dir;
 
         LocalFilesConfig cfg;
@@ -279,7 +278,7 @@ protected:
         backend_ = std::make_shared<LocalFilesBackend>(cfg);
     }
 
-    void TearDown() override {
+    ~EndToEndFixture() {
         fs::remove_all(base_dir_);
     }
 
@@ -294,32 +293,34 @@ protected:
     std::shared_ptr<LocalFilesBackend> backend_;
 };
 
+BOOST_FIXTURE_TEST_SUITE(EndToEndTest, EndToEndFixture)
+
 // ---------------------------------------------------------------------------
 // 1. Basic lifecycle: store → announce → claim → execute → completed
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, BasicLifecycle) {
+BOOST_AUTO_TEST_CASE(BasicLifecycle) {
     FakeClient client("c1", backend_);
     FakeServer server("s1", backend_);
 
     const std::string uuid = client.addTask("do-something");
-    EXPECT_FALSE(uuid.empty());
+    BOOST_CHECK(!uuid.empty());
 
     // Simulate announce reception
     std::string task_body = backend_->getObject("tasks/" + uuid);
-    ASSERT_FALSE(task_body.empty());
+    BOOST_REQUIRE(!task_body.empty());
     Task t = parseTask(task_body);
 
     bool claimed = server.handleAnnounce(t.uuid, t.payload);
-    EXPECT_TRUE(claimed);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK(claimed);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
 
 // ---------------------------------------------------------------------------
 // 2. Multiple tasks
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, MultipleTasksAllExecuted) {
+BOOST_AUTO_TEST_CASE(MultipleTasksAllExecuted) {
     FakeClient client("c1", backend_);
     FakeServer server("s1", backend_);
 
@@ -334,14 +335,14 @@ TEST_F(EndToEndTest, MultipleTasksAllExecuted) {
     }
 
     for (const auto& uuid : uuids)
-        EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED) << "uuid=" << uuid;
+        BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
 
 // ---------------------------------------------------------------------------
 // 3. Duplicate announce: idempotent execution
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, DuplicateAnnounceIgnored) {
+BOOST_AUTO_TEST_CASE(DuplicateAnnounceIgnored) {
     FakeClient client("c1", backend_);
     FakeServer server("s1", backend_);
 
@@ -358,15 +359,15 @@ TEST_F(EndToEndTest, DuplicateAnnounceIgnored) {
     server.handleAnnounce(t.uuid, t.payload); // duplicate – should be ignored
     server.handleAnnounce(t.uuid, t.payload); // third – also ignored
 
-    EXPECT_EQ(exec_count, 1);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK_EQUAL(exec_count, 1);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
 
 // ---------------------------------------------------------------------------
 // 4. Race: two servers competing; exactly one wins the claim
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, TwoServersOnlyOneExecutes) {
+BOOST_AUTO_TEST_CASE(TwoServersOnlyOneExecutes) {
     FakeClient client("c1", backend_);
     FakeServer s1("server-A", backend_);
     FakeServer s2("server-B", backend_);
@@ -383,16 +384,16 @@ TEST_F(EndToEndTest, TwoServersOnlyOneExecutes) {
     bool c1 = s1.handleAnnounce(t.uuid, t.payload);
     bool c2 = s2.handleAnnounce(t.uuid, t.payload);
 
-    EXPECT_NE(c1, c2) << "Exactly one server should have claimed the task";
-    EXPECT_EQ(exec_a + exec_b, 1);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK_MESSAGE(c1 != c2, "Exactly one server should have claimed the task");
+    BOOST_CHECK_EQUAL(exec_a + exec_b, 1);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
 
 // ---------------------------------------------------------------------------
 // 5. Multiple burst sends are idempotent
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, MultipleBurstSendsIdempotent) {
+BOOST_AUTO_TEST_CASE(MultipleBurstSendsIdempotent) {
     FakeClient client("c1", backend_);
     FakeServer server("s1", backend_);
 
@@ -409,15 +410,15 @@ TEST_F(EndToEndTest, MultipleBurstSendsIdempotent) {
     for (int i = 0; i < 5; ++i)
         server.handleAnnounce(t.uuid, t.payload);
 
-    EXPECT_EQ(exec_count, 1);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK_EQUAL(exec_count, 1);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
 
 // ---------------------------------------------------------------------------
 // 6. Client node failure: task stored but no announce; second client discovers it
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, ClientNodeFailureTaskDiscoveredByRelay) {
+BOOST_AUTO_TEST_CASE(ClientNodeFailureTaskDiscoveredByRelay) {
     // Client 1 stores the task then "crashes" (no announce)
     FakeClient c1("c1", backend_);
     const std::string uuid = c1.addTask("important-task");
@@ -427,21 +428,21 @@ TEST_F(EndToEndTest, ClientNodeFailureTaskDiscoveredByRelay) {
     FakeServer server("s1", backend_);
 
     auto fresh = c2.discoverNewTasks();
-    ASSERT_EQ(fresh.size(), 1u);
-    EXPECT_EQ(fresh[0], uuid);
+    BOOST_REQUIRE_EQUAL(fresh.size(), 1u);
+    BOOST_CHECK_EQUAL(fresh[0], uuid);
 
     // Client 2 relays the announce
     Task t = parseTask(backend_->getObject("tasks/" + uuid));
     server.handleAnnounce(t.uuid, t.payload);
 
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
 
 // ---------------------------------------------------------------------------
 // 7. Jitter: delayed second announce after task already completed
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, JitteredLateAnnounceIgnored) {
+BOOST_AUTO_TEST_CASE(JitteredLateAnnounceIgnored) {
     FakeClient client("c1", backend_);
     FakeServer server("s1", backend_);
 
@@ -458,15 +459,15 @@ TEST_F(EndToEndTest, JitteredLateAnnounceIgnored) {
     // Simulate jitter: delayed re-announce (e.g. 200 ms later in real system)
     server.handleAnnounce(t.uuid, t.payload);
 
-    EXPECT_EQ(exec_count, 1);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK_EQUAL(exec_count, 1);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
 
 // ---------------------------------------------------------------------------
 // 8. Send delay: announce arrives after task status already set by another server
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, SendDelayAnnounceIgnoredWhenAlreadyExecutedByPeer) {
+BOOST_AUTO_TEST_CASE(SendDelayAnnounceIgnoredWhenAlreadyExecutedByPeer) {
     FakeClient client("c1", backend_);
     FakeServer s1("fast-server",  backend_);
     FakeServer s2("slow-receiver", backend_);
@@ -476,7 +477,7 @@ TEST_F(EndToEndTest, SendDelayAnnounceIgnoredWhenAlreadyExecutedByPeer) {
 
     // fast-server processes first
     s1.handleAnnounce(t.uuid, t.payload);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 
     // slow-receiver gets a delayed announce – should not re-execute
     int exec_count = 0;
@@ -485,15 +486,15 @@ TEST_F(EndToEndTest, SendDelayAnnounceIgnoredWhenAlreadyExecutedByPeer) {
         return "re-executed";
     });
     s2.handleAnnounce(t.uuid, t.payload);
-    EXPECT_EQ(exec_count, 0);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK_EQUAL(exec_count, 0);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
 
 // ---------------------------------------------------------------------------
 // 9. Watchdog: crashed executor leaves EXECUTING; watchdog retries
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, WatchdogRetryAfterExecutorCrash) {
+BOOST_AUTO_TEST_CASE(WatchdogRetryAfterExecutorCrash) {
     FakeClient client("c1", backend_);
 
     // crashed_server claims the task but "crashes" before completing it
@@ -504,7 +505,7 @@ TEST_F(EndToEndTest, WatchdogRetryAfterExecutorCrash) {
 
         // Claim only (simulate crash after claim, before completion)
         crashed.claimOnly(t.uuid);
-        EXPECT_EQ(readStatus(t.uuid), TaskStatus::EXECUTING);
+        BOOST_CHECK_EQUAL(readStatus(t.uuid), TaskStatus::EXECUTING);
 
         // recovery_server runs watchdog and takes over
         int exec_count = 0;
@@ -523,7 +524,7 @@ TEST_F(EndToEndTest, WatchdogRetryAfterExecutorCrash) {
         // If the task wasn't locally tracked, the watchdog won't find it;
         // instead simulate re-discovery via backend listing.
         if (retried == 0) {
-            // recovery server sees the task via S3 listing
+            // recovery server sees the task via backend listing
             auto keys = backend_->listObjects("tasks/");
             for (const auto& key : keys) {
                 const std::string pfx = "tasks/";
@@ -548,7 +549,7 @@ TEST_F(EndToEndTest, WatchdogRetryAfterExecutorCrash) {
             }
         }
 
-        EXPECT_EQ(readStatus(t.uuid), TaskStatus::COMPLETED);
+        BOOST_CHECK_EQUAL(readStatus(t.uuid), TaskStatus::COMPLETED);
     }
 }
 
@@ -556,7 +557,7 @@ TEST_F(EndToEndTest, WatchdogRetryAfterExecutorCrash) {
 // 10. Handler throws: task marked FAILED, status persisted
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, HandlerExceptionMarksFailed) {
+BOOST_AUTO_TEST_CASE(HandlerExceptionMarksFailed) {
     FakeClient client("c1", backend_);
     FakeServer server("s1", backend_);
 
@@ -568,14 +569,14 @@ TEST_F(EndToEndTest, HandlerExceptionMarksFailed) {
     Task t = parseTask(backend_->getObject("tasks/" + uuid));
 
     server.handleAnnounce(t.uuid, t.payload);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::FAILED);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::FAILED);
 }
 
 // ---------------------------------------------------------------------------
 // 11. Multiple clients relay the same task (multi-client scenario)
 // ---------------------------------------------------------------------------
 
-TEST_F(EndToEndTest, MultiClientRelayAllSeeTask) {
+BOOST_AUTO_TEST_CASE(MultiClientRelayAllSeeTask) {
     FakeClient c1("c1", backend_);
     FakeClient c2("c2", backend_);
     FakeClient c3("c3", backend_);
@@ -587,8 +588,8 @@ TEST_F(EndToEndTest, MultiClientRelayAllSeeTask) {
     // c2 and c3 discover it via backend polling
     auto fresh2 = c2.discoverNewTasks();
     auto fresh3 = c3.discoverNewTasks();
-    ASSERT_EQ(fresh2.size(), 1u);
-    ASSERT_EQ(fresh3.size(), 1u);
+    BOOST_REQUIRE_EQUAL(fresh2.size(), 1u);
+    BOOST_REQUIRE_EQUAL(fresh3.size(), 1u);
 
     // All three "relay" the announce; only one execution should happen
     int exec = 0;
@@ -599,6 +600,8 @@ TEST_F(EndToEndTest, MultiClientRelayAllSeeTask) {
     server.handleAnnounce(t.uuid, t.payload); // from c2's relay
     server.handleAnnounce(t.uuid, t.payload); // from c3's relay
 
-    EXPECT_EQ(exec, 1);
-    EXPECT_EQ(readStatus(uuid), TaskStatus::COMPLETED);
+    BOOST_CHECK_EQUAL(exec, 1);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
 }
+
+BOOST_AUTO_TEST_SUITE_END()

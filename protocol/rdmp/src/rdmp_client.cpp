@@ -139,6 +139,10 @@ void RDMPClient::drainBurstQueue() {
 
 bool RDMPClient::storeTask(const std::string& uuid,
                             const std::string& payload) {
+    // In multicast-reply mode there is no shared persistent storage; task
+    // payloads are carried entirely in the UDP datagram burst.
+    if (config_.global.synctype == SyncType::MulticastReply) return true;
+
     Task t;
     t.uuid       = uuid;
     t.payload    = payload;
@@ -207,8 +211,12 @@ std::string RDMPClient::addNewMessage(const std::string& payload) {
 }
 
 void RDMPClient::runOnce() {
+    backend_->sync();
     drainBurstQueue();
-    pollS3ForNewTasks();
+    // In multicast-reply mode the reply multicast group acts as the shared
+    // state channel; no separate backend poll is needed.
+    if (config_.global.synctype != SyncType::MulticastReply)
+        pollS3ForNewTasks();
 }
 
 void RDMPClient::run() {

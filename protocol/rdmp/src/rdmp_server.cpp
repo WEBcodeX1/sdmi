@@ -154,6 +154,11 @@ bool RDMPServer::receiveAndProcess() {
 void RDMPServer::handleTaskAnnounce(const std::string& uuid,
                                      const std::string& payload,
                                      const std::string& src_ip) {
+    // Cache task payload for watchdog retry (avoids backend fetch in
+    // multicast-reply mode where no persistent storage is used).
+    if (!payload.empty())
+        task_payloads_.emplace(uuid, payload);
+
     // Record receipt time for degradation detection
     const int64_t now = currentTimeMs();
     auto& rec = receipt_times_[uuid];
@@ -338,21 +343,28 @@ void RDMPServer::runWatchdog() {
 
         executing_.erase(uuid);
 
-        // Fetch task payload from S3 to retry
-        std::string task_body = backend_->getObject(S3_TASK_PREFIX + uuid);
-        if (task_body.empty()) {
-            std::cerr << "[RDMP/Server] Cannot fetch task payload for retry: "
-                      << uuid << "\n";
-            continue;
+        // Fetch task payload from cache first, then fall back to backend
+        std::string payload;
+        auto cache_it = task_payloads_.find(uuid);
+        if (cache_it != task_payloads_.end()) {
+            payload = cache_it->second;
+        } else {
+            std::string task_body = backend_->getObject(S3_TASK_PREFIX + uuid);
+            if (task_body.empty()) {
+                std::cerr << "[RDMP/Server] Cannot fetch task payload for retry: "
+                          << uuid << "\n";
+                continue;
+            }
+            Task t = parseTask(task_body);
+            if (t.uuid.empty()) continue;
+            payload = t.payload;
         }
-        Task t = parseTask(task_body);
-        if (t.uuid.empty()) continue;
 
         // Update local status to PENDING so tryClaimTask can proceed
         local_status_[uuid].status = TaskStatus::PENDING;
 
         if (tryClaimTask(uuid)) {
-            executeTask(uuid, t.payload);
+            executeTask(uuid, payload);
         }
     }
 
@@ -411,6 +423,7 @@ void RDMPServer::checkDegradation(const std::string& uuid) {
 // ---------------------------------------------------------------------------
 
 void RDMPServer::runOnce() {
+    backend_->sync();
     receiveAndProcess();
     runWatchdog();
 }

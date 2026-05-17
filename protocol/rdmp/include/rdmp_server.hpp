@@ -93,6 +93,11 @@ private:
     // Tasks currently claimed by *this* server instance.
     std::unordered_map<std::string, ExecutingTask> executing_;
 
+    // Task payloads received via TASK_ANNOUNCE (used by watchdog for retry
+    // without having to re-fetch from backend, especially for multicast-reply
+    // mode where there is no persistent storage).
+    std::unordered_map<std::string, std::string> task_payloads_;
+
     // Per-task source-latency records for degradation detection.
     std::unordered_map<std::string, SourceReceipt> receipt_times_;
 

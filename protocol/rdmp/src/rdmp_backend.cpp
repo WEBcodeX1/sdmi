@@ -1,6 +1,7 @@
 #include "rdmp_backend.hpp"
 #include "rdmp_s3.hpp"
 #include "rdmp_local_files.hpp"
+#include "rdmp_multicast_reply.hpp"
 #include "rdmp_common.hpp"
 
 #include <memory>
@@ -39,16 +40,18 @@ private:
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<IStorageBackend> makeStorageBackend(const ClientConfig& cfg) {
-    if (cfg.global.synctype == SyncType::LocalFiles) {
+    if (cfg.global.synctype == SyncType::LocalFiles)
         return std::make_unique<LocalFilesBackend>(cfg.local_files);
-    }
+    if (cfg.global.synctype == SyncType::MulticastReply)
+        return std::make_unique<MulticastReplyBackend>(cfg.multicast_reply);
     return std::make_unique<S3Backend>(cfg.s3);
 }
 
 std::unique_ptr<IStorageBackend> makeStorageBackend(const ServerConfig& cfg) {
-    if (cfg.global.synctype == SyncType::LocalFiles) {
+    if (cfg.global.synctype == SyncType::LocalFiles)
         return std::make_unique<LocalFilesBackend>(cfg.local_files);
-    }
+    if (cfg.global.synctype == SyncType::MulticastReply)
+        return std::make_unique<MulticastReplyBackend>(cfg.multicast_reply);
     return std::make_unique<S3Backend>(cfg.s3);
 }
 
