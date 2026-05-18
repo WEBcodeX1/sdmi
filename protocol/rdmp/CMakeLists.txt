@@ -20,7 +20,6 @@ add_library(rdmp_core STATIC
     src/rdmp_common.cpp
     src/rdmp_s3.cpp
     src/rdmp_local_files.cpp
-    src/rdmp_multicast_reply.cpp
     src/rdmp_backend.cpp
 )
 

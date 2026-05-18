@@ -122,6 +122,11 @@ private:
     // Execute the task and persist the result status to the backend.
     void executeTask(const std::string& uuid, const std::string& payload);
 
+    // Return the storage key used for a task's status record.
+    // In bypass mode: per-server key ("status/<uuid>/<server_id>").
+    // In normal mode: shared key ("status/<uuid>").
+    std::string statusKey(const std::string& uuid) const;
+
     // Persist a status update for uuid to both backend and the local cache.
     void updateTaskStatus(const std::string& uuid,
                           TaskStatus         status,

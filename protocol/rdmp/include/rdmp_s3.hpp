@@ -42,11 +42,30 @@ private:
     S3Config    config_;
     CURL*       curl_;
 
+    // Effective endpoint list (primary first, then extras from config_.endpoints).
+    std::vector<std::string> endpoints_;
+    size_t                   active_endpoint_idx_ = 0;
+
+    // Return the currently active endpoint URL.
+    const std::string& activeEndpoint() const;
+
+    // Rotate to the next endpoint in the list.
+    void rotateEndpoint();
+
     // Build the full path-style URL for a given object key.
     std::string objectUrl(const std::string& key) const;
 
     // Build the list URL for a given key prefix.
     std::string listUrl(const std::string& prefix) const;
+
+    // Perform an HTTP request with automatic endpoint failover on timeout/error.
+    // http_method: "GET" or "PUT".
+    // For PUT requests the body is sent; for GET it is empty.
+    std::string performWithFailover(const std::string& url,
+                                    const std::string& http_method,
+                                    const std::string& body,
+                                    const std::string& content_type,
+                                    long*              http_code_out);
 
     // AWS Signature V4 helpers
     static std::string sha256hex(const std::string& data);
@@ -56,9 +75,6 @@ private:
                                      const std::string& msg);
 
     // Build and return the AWS Authorization header value.
-    // 'signed_headers_map' must already contain host + x-amz-date (and
-    //  optionally x-amz-content-sha256); the function appends all signed
-    //  headers to the returned header string.
     std::string buildAuthHeader(const std::string& http_method,
                                 const std::string& canonical_uri,
                                 const std::string& canonical_query,

@@ -8,14 +8,10 @@
         "ttl": 32,
         "interface": ""
     },
-    "multicast_reply": {
-        "group": "239.1.2.4",
-        "port": 5001,
-        "ttl": 32,
-        "interface": ""
-    },
     "s3": {
         "endpoint": "http://s3.internal.example.com:9000",
+        "endpoints": [],
+        "max_answer_timeout_ms": 5000,
         "bucket": "rdmp-tasks",
         "access_key": "your-access-key",
         "secret_key": "your-secret-key",

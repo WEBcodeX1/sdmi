@@ -5,7 +5,18 @@ cmake_minimum_required(VERSION 3.14)
 # ---------------------------------------------------------------------------
 
 find_package(Python3 REQUIRED COMPONENTS Development)
-find_package(Boost 1.71 REQUIRED COMPONENTS python${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR})
+find_package(Boost 1.71 QUIET COMPONENTS python${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR})
+
+if(NOT Boost_python${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR}_FOUND AND NOT Boost_FOUND)
+    message(STATUS "Boost.Python not found – skipping rdmp Python bindings")
+    return()
+endif()
+
+# Check that the python component was actually found
+if(NOT TARGET Boost::python${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR})
+    message(STATUS "Boost::python${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR} target not available – skipping Python bindings")
+    return()
+endif()
 
 # ---------------------------------------------------------------------------
 # rdmp Python extension module

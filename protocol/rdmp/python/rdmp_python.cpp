@@ -70,9 +70,8 @@ BOOST_PYTHON_MODULE(rdmp) {
     // SyncType enum
     // ------------------------------------------------------------------
     enum_<rdmp::SyncType>("SyncType")
-        .value("S3",             rdmp::SyncType::S3)
-        .value("LocalFiles",     rdmp::SyncType::LocalFiles)
-        .value("MulticastReply", rdmp::SyncType::MulticastReply)
+        .value("S3",         rdmp::SyncType::S3)
+        .value("LocalFiles", rdmp::SyncType::LocalFiles)
         ;
 
     // ------------------------------------------------------------------
@@ -104,24 +103,16 @@ BOOST_PYTHON_MODULE(rdmp) {
         ;
 
     // ------------------------------------------------------------------
-    // MulticastReplyConfig
-    // ------------------------------------------------------------------
-    class_<rdmp::MulticastReplyConfig>("MulticastReplyConfig")
-        .def_readwrite("group", &rdmp::MulticastReplyConfig::group)
-        .def_readwrite("port",  &rdmp::MulticastReplyConfig::port)
-        .def_readwrite("ttl",   &rdmp::MulticastReplyConfig::ttl)
-        .def_readwrite("iface", &rdmp::MulticastReplyConfig::iface)
-        ;
-
-    // ------------------------------------------------------------------
     // S3Config
     // ------------------------------------------------------------------
     class_<rdmp::S3Config>("S3Config")
-        .def_readwrite("endpoint",   &rdmp::S3Config::endpoint)
-        .def_readwrite("bucket",     &rdmp::S3Config::bucket)
-        .def_readwrite("access_key", &rdmp::S3Config::access_key)
-        .def_readwrite("secret_key", &rdmp::S3Config::secret_key)
-        .def_readwrite("region",     &rdmp::S3Config::region)
+        .def_readwrite("endpoint",            &rdmp::S3Config::endpoint)
+        .def_readwrite("bucket",              &rdmp::S3Config::bucket)
+        .def_readwrite("access_key",          &rdmp::S3Config::access_key)
+        .def_readwrite("secret_key",          &rdmp::S3Config::secret_key)
+        .def_readwrite("region",              &rdmp::S3Config::region)
+        .def_readwrite("max_answer_timeout_ms",
+                       &rdmp::S3Config::max_answer_timeout_ms)
         ;
 
     // ------------------------------------------------------------------
@@ -155,26 +146,25 @@ BOOST_PYTHON_MODULE(rdmp) {
     // ClientConfig
     // ------------------------------------------------------------------
     class_<rdmp::ClientConfig>("ClientConfig")
-        .def_readwrite("global_cfg",      &rdmp::ClientConfig::global)
-        .def_readwrite("multicast",       &rdmp::ClientConfig::multicast)
-        .def_readwrite("multicast_reply", &rdmp::ClientConfig::multicast_reply)
-        .def_readwrite("s3",              &rdmp::ClientConfig::s3)
-        .def_readwrite("local_files",     &rdmp::ClientConfig::local_files)
-        .def_readwrite("timeouts",        &rdmp::ClientConfig::timeouts)
-        .def_readwrite("node_id",         &rdmp::ClientConfig::node_id)
+        .def_readwrite("global_cfg",  &rdmp::ClientConfig::global)
+        .def_readwrite("multicast",   &rdmp::ClientConfig::multicast)
+        .def_readwrite("s3",          &rdmp::ClientConfig::s3)
+        .def_readwrite("local_files", &rdmp::ClientConfig::local_files)
+        .def_readwrite("timeouts",    &rdmp::ClientConfig::timeouts)
+        .def_readwrite("node_id",     &rdmp::ClientConfig::node_id)
         ;
 
     // ------------------------------------------------------------------
     // ServerConfig
     // ------------------------------------------------------------------
     class_<rdmp::ServerConfig>("ServerConfig")
-        .def_readwrite("global_cfg",      &rdmp::ServerConfig::global)
-        .def_readwrite("multicast",       &rdmp::ServerConfig::multicast)
-        .def_readwrite("multicast_reply", &rdmp::ServerConfig::multicast_reply)
-        .def_readwrite("s3",              &rdmp::ServerConfig::s3)
-        .def_readwrite("local_files",     &rdmp::ServerConfig::local_files)
-        .def_readwrite("timeouts",        &rdmp::ServerConfig::timeouts)
-        .def_readwrite("node_id",         &rdmp::ServerConfig::node_id)
+        .def_readwrite("global_cfg",           &rdmp::ServerConfig::global)
+        .def_readwrite("multicast",            &rdmp::ServerConfig::multicast)
+        .def_readwrite("s3",                   &rdmp::ServerConfig::s3)
+        .def_readwrite("local_files",          &rdmp::ServerConfig::local_files)
+        .def_readwrite("timeouts",             &rdmp::ServerConfig::timeouts)
+        .def_readwrite("node_id",              &rdmp::ServerConfig::node_id)
+        .def_readwrite("bypass_pending_check", &rdmp::ServerConfig::bypass_pending_check)
         ;
 
     // ------------------------------------------------------------------

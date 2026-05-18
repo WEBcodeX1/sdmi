@@ -52,11 +52,13 @@ public:
     // Simulate receiving a TASK_ANNOUNCE.
     // Returns true if this server claimed and executed the task.
     bool handleAnnounce(const std::string& uuid, const std::string& payload) {
-        // Skip if already completed locally
+        // Skip if already completed/failed/executing locally (per spec 2.4:
+        // only proceed if status is "pending")
         auto it = local_status_.find(uuid);
         if (it != local_status_.end()) {
             if (it->second.status == TaskStatus::COMPLETED ||
-                it->second.status == TaskStatus::EXECUTING) {
+                it->second.status == TaskStatus::EXECUTING ||
+                it->second.status == TaskStatus::FAILED) {
                 return false;
             }
         }
@@ -159,7 +161,8 @@ private:
         if (!existing.empty()) {
             TaskStatusRecord cur = parseTaskStatus(existing);
             if (cur.status == TaskStatus::EXECUTING ||
-                cur.status == TaskStatus::COMPLETED) {
+                cur.status == TaskStatus::COMPLETED ||
+                cur.status == TaskStatus::FAILED) {
                 local_status_[uuid] = cur;
                 return false;
             }
@@ -602,6 +605,192 @@ BOOST_AUTO_TEST_CASE(MultiClientRelayAllSeeTask) {
 
     BOOST_CHECK_EQUAL(exec, 1);
     BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
+}
+
+// ---------------------------------------------------------------------------
+// 12. Full workflow: 2 clients + 3 servers, normal mode (spec 2.1–2.4)
+//
+//  - An external entity adds a task via addTask() (simulating addNewTask()).
+//  - Both clients discover the pending task via backend polling.
+//  - Both clients "send" the multicast (simulated as handleAnnounce calls).
+//  - All 3 servers receive the announce from both clients (6 calls total).
+//  - Exactly ONE server should execute the task; exactly ONE status object.
+// ---------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(TwoClientThreeServerWorkflowNormalMode) {
+    FakeClient c1("client1", backend_);
+    FakeClient c2("client2", backend_);
+    FakeServer s1("server1", backend_);
+    FakeServer s2("server2", backend_);
+    FakeServer s3("server3", backend_);
+
+    int exec_s1 = 0, exec_s2 = 0, exec_s3 = 0;
+    s1.setHandler([&](const std::string&, const std::string&) { ++exec_s1; return "s1-ok"; });
+    s2.setHandler([&](const std::string&, const std::string&) { ++exec_s2; return "s2-ok"; });
+    s3.setHandler([&](const std::string&, const std::string&) { ++exec_s3; return "s3-ok"; });
+
+    // External entity (c1) adds the task.
+    const std::string uuid = c1.addTask("scale-out node-7");
+    BOOST_REQUIRE(!uuid.empty());
+
+    // c2 polls and discovers the pending task.
+    auto fresh = c2.discoverNewTasks();
+    BOOST_REQUIRE_EQUAL(fresh.size(), 1u);
+    BOOST_CHECK_EQUAL(fresh[0], uuid);
+
+    // Fetch the task payload (both clients have it).
+    Task t = parseTask(backend_->getObject("tasks/" + uuid));
+    BOOST_REQUIRE(!t.uuid.empty());
+
+    // Simulate multicast delivery: both clients send to all 3 servers.
+    // In the real system each client broadcasts UDP; here we call handleAnnounce.
+    std::vector<FakeServer*> servers = {&s1, &s2, &s3};
+    for (FakeServer* srv : servers)
+        srv->handleAnnounce(t.uuid, t.payload); // from client1
+    for (FakeServer* srv : servers)
+        srv->handleAnnounce(t.uuid, t.payload); // from client2 (delayed relay)
+
+    // Exactly one server executed the task.
+    const int total_exec = exec_s1 + exec_s2 + exec_s3;
+    BOOST_CHECK_EQUAL(total_exec, 1);
+
+    // Status is COMPLETED.
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::COMPLETED);
+
+    // Exactly one status object in the bucket (normal mode: shared key).
+    auto status_keys = backend_->listObjects("status/");
+    BOOST_CHECK_EQUAL(status_keys.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 13. Full workflow: 2 clients + 3 servers, bypass mode (spec 2.5/2.6)
+//
+//  - bypass_pending_check = true: every server executes the task.
+//  - All 3 servers write their own per-server status records.
+//  - 3 status objects must exist in the bucket.
+// ---------------------------------------------------------------------------
+
+// FakeServer variant that supports bypass_pending_check.
+class FakeServerBypass {
+public:
+    FakeServerBypass(const std::string& id,
+                     std::shared_ptr<LocalFilesBackend> backend)
+        : id_(id), backend_(std::move(backend)) {}
+
+    // Simulate receiving a TASK_ANNOUNCE in bypass mode:
+    // always execute regardless of backend status.
+    bool handleAnnounce(const std::string& uuid, const std::string& payload) {
+        if (executed_.count(uuid)) return false; // don't double-execute same node
+        executed_.insert(uuid);
+
+        // Execute task
+        std::string result;
+        try {
+            result = handler_ ? handler_(uuid, payload) : "ok";
+        } catch (...) {
+            result = "error";
+        }
+
+        // Write per-server status (key: "status/<uuid>/<server_id>")
+        TaskStatusRecord r;
+        r.uuid       = uuid;
+        r.status     = TaskStatus::COMPLETED;
+        r.server_id  = id_;
+        r.updated_at = currentTimestamp();
+        r.result     = result;
+        backend_->putObject("status/" + uuid + "/" + id_, buildStatusJson(r));
+        return true;
+    }
+
+    void setHandler(std::function<std::string(const std::string&, const std::string&)> h) {
+        handler_ = std::move(h);
+    }
+
+    const std::string& id() const { return id_; }
+
+private:
+    std::string id_;
+    std::shared_ptr<LocalFilesBackend> backend_;
+    std::function<std::string(const std::string&, const std::string&)> handler_;
+    std::unordered_set<std::string> executed_;
+};
+
+BOOST_AUTO_TEST_CASE(TwoClientThreeServerWorkflowBypassMode) {
+    FakeClient c1("client1", backend_);
+    FakeClient c2("client2", backend_);
+    FakeServerBypass s1("server1", backend_);
+    FakeServerBypass s2("server2", backend_);
+    FakeServerBypass s3("server3", backend_);
+
+    int exec_s1 = 0, exec_s2 = 0, exec_s3 = 0;
+    s1.setHandler([&](const std::string&, const std::string&) { ++exec_s1; return "s1-ok"; });
+    s2.setHandler([&](const std::string&, const std::string&) { ++exec_s2; return "s2-ok"; });
+    s3.setHandler([&](const std::string&, const std::string&) { ++exec_s3; return "s3-ok"; });
+
+    // External entity adds the task.
+    const std::string uuid = c1.addTask("scale-out node-7");
+    BOOST_REQUIRE(!uuid.empty());
+
+    // c2 polls and discovers the pending task.
+    auto fresh = c2.discoverNewTasks();
+    BOOST_REQUIRE_EQUAL(fresh.size(), 1u);
+
+    Task t = parseTask(backend_->getObject("tasks/" + uuid));
+    BOOST_REQUIRE(!t.uuid.empty());
+
+    // Both clients send to all 3 servers.
+    // In bypass mode each server executes once (deduplicated per node).
+    std::vector<FakeServerBypass*> servers = {&s1, &s2, &s3};
+    for (FakeServerBypass* srv : servers)
+        srv->handleAnnounce(t.uuid, t.payload); // from client1
+    for (FakeServerBypass* srv : servers)
+        srv->handleAnnounce(t.uuid, t.payload); // duplicate from client2 – ignored per node
+
+    // All 3 servers executed the task.
+    BOOST_CHECK_EQUAL(exec_s1, 1);
+    BOOST_CHECK_EQUAL(exec_s2, 1);
+    BOOST_CHECK_EQUAL(exec_s3, 1);
+
+    // Exactly 3 per-server status objects in the bucket.
+    auto status_keys = backend_->listObjects("status/");
+    BOOST_CHECK_EQUAL(status_keys.size(), 3u);
+
+    // Verify each server's status is COMPLETED.
+    for (const std::string srv_id : std::vector<std::string>{"server1", "server2", "server3"}) {
+        std::string body = backend_->getObject("status/" + uuid + "/" + srv_id);
+        BOOST_REQUIRE_MESSAGE(!body.empty(),
+            "Missing status for server: " + srv_id);
+        TaskStatusRecord rec = parseTaskStatus(body);
+        BOOST_CHECK_EQUAL(rec.status, TaskStatus::COMPLETED);
+        BOOST_CHECK_EQUAL(rec.server_id, srv_id);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 14. FAILED status prevents re-execution in normal mode (spec 2.4)
+// ---------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(FailedStatusPreventsReExecution) {
+    FakeClient client("c1", backend_);
+    FakeServer server("s1", backend_);
+
+    int exec_count = 0;
+    server.setHandler([&](const std::string&, const std::string&) -> std::string {
+        ++exec_count;
+        throw std::runtime_error("handler failed");
+    });
+
+    const std::string uuid = client.addTask("failing-msg");
+    Task t = parseTask(backend_->getObject("tasks/" + uuid));
+
+    // First announce: executes, fails.
+    server.handleAnnounce(t.uuid, t.payload);
+    BOOST_CHECK_EQUAL(exec_count, 1);
+    BOOST_CHECK_EQUAL(readStatus(uuid), TaskStatus::FAILED);
+
+    // Second announce (e.g. late packet): must NOT re-execute (FAILED ≠ PENDING).
+    server.handleAnnounce(t.uuid, t.payload);
+    BOOST_CHECK_EQUAL(exec_count, 1);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

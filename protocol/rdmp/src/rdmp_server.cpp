@@ -148,14 +148,23 @@ bool RDMPServer::receiveAndProcess() {
 }
 
 // ---------------------------------------------------------------------------
+// Status key helper
+// ---------------------------------------------------------------------------
+
+std::string RDMPServer::statusKey(const std::string& uuid) const {
+    if (config_.bypass_pending_check)
+        return S3_STATUS_PREFIX + uuid + "/" + config_.node_id;
+    return S3_STATUS_PREFIX + uuid;
+}
+
+// ---------------------------------------------------------------------------
 // Task announce handling
 // ---------------------------------------------------------------------------
 
 void RDMPServer::handleTaskAnnounce(const std::string& uuid,
                                      const std::string& payload,
                                      const std::string& src_ip) {
-    // Cache task payload for watchdog retry (avoids backend fetch in
-    // multicast-reply mode where no persistent storage is used).
+    // Cache task payload for watchdog retry (avoids backend fetch on retry).
     if (!payload.empty())
         task_payloads_.emplace(uuid, payload);
 
@@ -166,11 +175,23 @@ void RDMPServer::handleTaskAnnounce(const std::string& uuid,
     rec.by_source[src_ip] = now;
     checkDegradation(uuid);
 
-    // Check local status cache first (fast-path)
+    if (config_.bypass_pending_check) {
+        // Bypass mode: skip the shared S3 status check entirely.
+        // Every server executes the task independently; each writes its own
+        // per-server status record at "status/<uuid>/<server_id>".
+        if (executing_.count(uuid)) return;  // don't double-execute on this node
+        executeTask(uuid, payload);
+        return;
+    }
+
+    // Normal mode (2.4): check local status cache first (fast-path).
     auto it = local_status_.find(uuid);
     if (it != local_status_.end()) {
         TaskStatus s = it->second.status;
-        if (s == TaskStatus::COMPLETED || s == TaskStatus::EXECUTING) return;
+        if (s == TaskStatus::COMPLETED || s == TaskStatus::EXECUTING ||
+            s == TaskStatus::FAILED) {
+            return;
+        }
     }
 
     // Check if we're already executing this task
@@ -187,14 +208,17 @@ void RDMPServer::handleTaskAnnounce(const std::string& uuid,
 // ---------------------------------------------------------------------------
 
 bool RDMPServer::tryClaimTask(const std::string& uuid) {
-    const std::string status_key = S3_STATUS_PREFIX + uuid;
+    const std::string status_key = statusKey(uuid);
 
-    // Check current status on S3
+    // Check current status on backend (per spec 2.4: only proceed if pending)
     std::string existing = backend_->getObject(status_key);
     if (!existing.empty()) {
         TaskStatusRecord cur = parseTaskStatus(existing);
+        // Any non-pending status means another server is handling / has handled
+        // this task – do not process.
         if (cur.status == TaskStatus::EXECUTING ||
-            cur.status == TaskStatus::COMPLETED) {
+            cur.status == TaskStatus::COMPLETED ||
+            cur.status == TaskStatus::FAILED) {
             local_status_[uuid] = cur;
             return false;
         }
@@ -285,7 +309,7 @@ void RDMPServer::updateTaskStatus(const std::string& uuid,
     r.result     = result;
 
     local_status_[uuid] = r;
-    backend_->putObject(S3_STATUS_PREFIX + uuid, buildStatusJson(r));
+    backend_->putObject(statusKey(uuid), buildStatusJson(r));
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +317,9 @@ void RDMPServer::updateTaskStatus(const std::string& uuid,
 // ---------------------------------------------------------------------------
 
 void RDMPServer::runWatchdog() {
+    // Watchdog only applies in normal (non-bypass) mode.
+    if (config_.bypass_pending_check) return;
+
     const int64_t now = currentTimeMs();
     if (now - last_watchdog_ms_ <
         static_cast<int64_t>(config_.timeouts.watchdog_interval_ms)) {
@@ -304,8 +331,8 @@ void RDMPServer::runWatchdog() {
     for (auto& [uuid, status_rec] : local_status_) {
         if (status_rec.status != TaskStatus::EXECUTING) continue;
 
-        // Fetch fresh S3 status
-        std::string body = backend_->getObject(S3_STATUS_PREFIX + uuid);
+        // Fetch fresh backend status
+        std::string body = backend_->getObject(statusKey(uuid));
         if (body.empty()) continue;
 
         TaskStatusRecord fresh = parseTaskStatus(body);
@@ -331,15 +358,10 @@ void RDMPServer::runWatchdog() {
             continue;
         }
 
-        // Timed out – retry if the server_id is ours (we crashed mid-task)
-        // or if server_id belongs to another node (other node is down).
+        // Timed out – mark as failed first, then reset to PENDING for retry.
         std::cerr << "[RDMP/Server] Watchdog: task " << uuid
                   << " timed out (executor=" << fresh.server_id
                   << "), retrying\n";
-
-        // Mark as failed and re-claim
-        updateTaskStatus(uuid, TaskStatus::FAILED, fresh.server_id,
-                         "watchdog timeout");
 
         executing_.erase(uuid);
 
@@ -360,7 +382,13 @@ void RDMPServer::runWatchdog() {
             payload = t.payload;
         }
 
-        // Update local status to PENDING so tryClaimTask can proceed
+        // Reset backend status to PENDING so tryClaimTask succeeds
+        TaskStatusRecord pending_rec;
+        pending_rec.uuid       = uuid;
+        pending_rec.status     = TaskStatus::PENDING;
+        pending_rec.server_id  = "";
+        pending_rec.updated_at = currentTimestamp();
+        backend_->putObject(statusKey(uuid), buildStatusJson(pending_rec));
         local_status_[uuid].status = TaskStatus::PENDING;
 
         if (tryClaimTask(uuid)) {

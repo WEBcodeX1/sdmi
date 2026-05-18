@@ -1,14 +1,44 @@
 # RDMP – Reliable Message Distribution Protocol
 
-## Overview
+## What RDMP Does
 
-RDMP is a C++ implementation of a reliable, distributed message distribution
-protocol designed for the SDMI (Odyssey) management plane.  It combines:
+RDMP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed **on at least one** server endpoint – or, in bypass mode, on every server endpoint.
 
-- **UDP multicast** for low-latency, fan-out task announcement (data plane)
-- **S3 / Ceph object storage** for durable, shared task state (control plane)
+The canonical use case in the SDMI context is issuing scale-up / scale-down commands to a fleet of infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss, delayed retransmission, split-brain S3 access) a task **may still be executed by more than one server**; the task handler must therefore be idempotent and **check the task UUID** to guard against unintended re-execution.
 
-Both the client and server are **single-threaded** and event-loop based.
+### How a task flows through the system
+
+```
+ External entity
+   │
+   │ 1. addNewTask("scale-out node-7")
+   │    → writes tasks/<uuid> to S3 (status: pending)
+   │
+   ├─── Client 1 ─────────────────────────────┐
+   │    (polls S3, sees NEW task)              │  UDP multicast (3×) → Server 1
+   │                                           ├→ UDP multicast (3×) → Server 2
+   └─── Client 2 ─────────────────────────────┤  UDP multicast (3×) → Server 3
+        (polls S3, sees NEW task, relays too)  │
+                                               │
+                                        Each server on receipt:
+                                          2. reads status/<uuid> from S3
+                                          3. if NOT "pending" → skip
+                                          4. if "pending" → write "executing"
+                                               re-read to verify ownership
+                                          5. execute task
+                                          6. write "completed" or "failed"
+```
+
+**Key properties:**
+
+| Property | Mechanism |
+|---|---|
+| 100% reliable delivery | Each client bursts N UDP datagrams; multiple independent clients relay the same task |
+| Best-effort single execution (normal mode) | S3 optimistic claim: PUT "executing" → re-read to verify server_id ownership; duplicate execution possible under network failures |
+| All-servers execution (bypass mode) | `bypass_pending_check=true` skips the S3 check; every server executes independently |
+| Crash / lost-packet recovery | Watchdog detects stale "executing" tasks and re-claims them |
+| No single point of failure | All state lives in the shared S3 bucket; any node can recover any task |
+| Idempotency responsibility | Task handlers **must** check the task UUID to guard against re-execution caused by delayed/duplicate announces |
 
 ---
 
@@ -19,7 +49,7 @@ Client 1 ─┐                            ┌─ Server 1
 Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
           │                            └─ Server 3
           │
-          └──── S3 Bucket / Memcache (shared task queue + status cache)
+          └──── S3 / Ceph Object Storage (shared task queue + status)
                 ▲
                 │  All nodes read / write task / status objects
 ```
@@ -39,7 +69,7 @@ Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
      schedules an identical UDP multicast burst.
    - This ensures that even if a client misses a burst from another client,
      it will relay the task independently – providing the parallel propagation
-     described in the specification.
+     guarantee.
 
 ### Server (MSG Distributor Server)
 
@@ -48,19 +78,37 @@ Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
 2. **Receive loop** (called by `runOnce()`):
    - Non-blocking `recvfrom`; parses the RDMP wire-format header.
    - For each `TASK_ANNOUNCE` datagram:
-     - Checks the local status cache.  Skips if already completed.
-     - Calls `tryClaimTask(uuid)`: reads S3 status → if PENDING/absent,
-       writes `status=executing, server_id=<self>` → re-reads to verify
-       ownership (optimistic last-write-wins concurrency).
-     - If the claim succeeds, calls the registered `TaskHandler` callback
-       and updates S3 status to `completed` or `failed`.
+
+     **Normal mode (`bypass_pending_check = false`, default):**
+     - Checks the local status cache. Skips if already completed / executing / failed.
+     - Reads `status/<uuid>` from S3. If status is anything other than "pending"
+       (i.e. "executing", "completed", or "failed"), **does not process** the task.
+     - If status is "pending" (no status object, or explicit pending): writes
+       `status=executing, server_id=<self>` to S3, re-reads to verify ownership
+       (optimistic last-write-wins concurrency). If ownership confirmed: execute.
+     - On completion: writes `status=completed` (or `failed`) to `status/<uuid>`.
+     - Result: **1 status object** per task in the bucket under normal conditions.
+        Under adverse network conditions (delayed duplicate announces, S3 write
+        races, or watchdog re-claim after a transient failure) **more than one
+        server may execute the same task**. Task handlers **must** be idempotent
+        and check the task UUID at the endpoint to prevent unintended re-execution.
+
+     **Bypass mode (`bypass_pending_check = true`):**
+     - Skips the S3 status check entirely. Every server that receives the
+       announce executes the task independently.
+     - Each server writes its own per-server status record to
+       `status/<uuid>/<server_id>`.
+     - Result: **N status objects** per task (one per server). De-duplication
+       of the actual side-effect is the responsibility of the executing
+       application (e.g. checking a UUID in disk / memory).
 
 3. **Watchdog** (rate-limited, runs inside `runOnce()`):
+   - Active only in normal mode.
    - Scans locally known tasks for stale `EXECUTING` entries.
-   - For tasks that have exceeded `task_execution_ms`, marks them `failed`
-     in S3 and re-runs the claim/execute cycle.
-   - Also discovers unknown executing tasks from S3 list to handle
-     peer-node crashes.
+   - For tasks that have exceeded `task_execution_ms`: resets backend status to
+     `pending` and re-runs the claim/execute cycle.
+   - Also discovers unknown executing tasks from the S3 listing (handles
+     peer-node crashes).
 
 4. **Degradation detection**:
    - Tracks the first receipt time of each UUID per source IP.
@@ -78,7 +126,7 @@ Offset  Size  Field
 ──────  ────  ─────────────────────────────────────────────
  0       4    Magic number: 0x52444D50 ("RDMP"), big-endian
  4       1    Protocol version: 0x01
- 5       1    Message type: 0x01 = TASK_ANNOUNCE, 0x02 = HEARTBEAT
+ 5       1    Message type: 0x01 = TASK_ANNOUNCE
  6      36    Task UUID (ASCII, e.g. "550e8400-e29b-41d4-a716-446655440000")
 42       4    Payload length N (big-endian uint32)
 46       N    Payload (arbitrary bytes)
@@ -99,13 +147,25 @@ Offset  Size  Field
 }
 ```
 
-### Status object – `status/<uuid>`
+### Status object (normal mode) – `status/<uuid>`
 
 ```json
 {
   "uuid":       "550e8400-e29b-41d4-a716-446655440000",
   "status":     "completed",
   "server_id":  "server2",
+  "updated_at": "2024-01-15T10:30:01Z",
+  "result":     "ok"
+}
+```
+
+### Status object (bypass mode) – `status/<uuid>/<server_id>`
+
+```json
+{
+  "uuid":       "550e8400-e29b-41d4-a716-446655440000",
+  "status":     "completed",
+  "server_id":  "server1",
   "updated_at": "2024-01-15T10:30:01Z",
   "result":     "ok"
 }
@@ -125,10 +185,11 @@ Status values: `pending` → `executing` → `completed` | `failed`
 | GCC / Clang| C++17           | Compiler                    |
 | libcurl    | any recent      | HTTP requests to S3         |
 | OpenSSL    | 1.1+            | AWS Signature V4 (HMAC-SHA256) |
+| Boost.Test | 1.71+           | Unit test framework         |
 
 On Debian/Ubuntu:
 ```bash
-sudo apt-get install build-essential cmake libcurl4-openssl-dev libssl-dev
+sudo apt-get install build-essential cmake libcurl4-openssl-dev libssl-dev libboost-test-dev
 ```
 
 ### Compile
@@ -147,13 +208,9 @@ Produces two binaries in `build/`:  `rdmp_client`  and  `rdmp_server`.
 
 Both binaries accept a single argument: the path to a **JSON** config file.
 
-```bash
-cp config/client.json /etc/rdmp/client.json
-cp config/server.json /etc/rdmp/server.json
-# Edit the files to match your environment
-```
-
 ### Full config schema
+
+#### Client (`config/client.json`)
 
 ```json
 {
@@ -168,6 +225,11 @@ cp config/server.json /etc/rdmp/server.json
     },
     "s3": {
         "endpoint": "http://s3.internal.example.com:9000",
+        "endpoints": [
+            "http://s3-replica1.internal.example.com:9000",
+            "http://s3-replica2.internal.example.com:9000"
+        ],
+        "max_answer_timeout_ms": 5000,
         "bucket": "rdmp-tasks",
         "access_key": "your-access-key",
         "secret_key": "your-secret-key",
@@ -191,27 +253,85 @@ cp config/server.json /etc/rdmp/server.json
 }
 ```
 
-All fields are optional and fall back to defaults when omitted.
+#### Server (`config/server.json`)
+
+```json
+{
+    "global": {
+        "synctype": "s3"
+    },
+    "multicast": {
+        "group": "239.1.2.3",
+        "port": 5000,
+        "ttl": 32,
+        "interface": ""
+    },
+    "s3": {
+        "endpoint": "http://s3.internal.example.com:9000",
+        "endpoints": [],
+        "max_answer_timeout_ms": 5000,
+        "bucket": "rdmp-tasks",
+        "access_key": "your-access-key",
+        "secret_key": "your-secret-key",
+        "region": "us-east-1"
+    },
+    "local_files": {
+        "base_path": "/tmp/rdmp-tasks"
+    },
+    "timeouts": {
+        "task_execution_ms": 5000,
+        "s3_poll_interval_ms": 1000,
+        "degradation_threshold_ms": 2000,
+        "watchdog_interval_ms": 2000,
+        "retry_delay_ms": 3000,
+        "multicast_repeat_count": 3,
+        "multicast_repeat_interval_ms": 100
+    },
+    "node": {
+        "id": "server1"
+    },
+    "server": {
+        "bypass_pending_check": false
+    }
+}
+```
 
 ### Key configuration fields
 
-| Section       | Key                            | Description                                      |
-|---------------|--------------------------------|--------------------------------------------------|
-| `global`      | `synctype`                     | `"s3"` (default) or `"local-files"` (testing)   |
-| `multicast`   | `group`                        | IPv4 multicast group (e.g. `239.1.2.3`)         |
-| `multicast`   | `port`                         | UDP port (same for all nodes)                    |
-| `multicast`   | `ttl`                          | Multicast IP TTL                                 |
-| `multicast`   | `interface`                    | Outbound / receive interface name (optional)     |
-| `s3`          | `endpoint`                     | Ceph/S3 HTTP base URL                            |
-| `s3`          | `bucket`                       | Shared task-queue bucket name                    |
-| `s3`          | `access_key` / `secret_key`    | Credentials (leave empty for anonymous)          |
-| `local_files` | `base_path`                    | Root directory for the local-files backend       |
-| `timeouts`    | `task_execution_ms`            | Watchdog task-execution timeout                  |
-| `timeouts`    | `s3_poll_interval_ms`          | Client backend poll interval                     |
-| `timeouts`    | `degradation_threshold_ms`     | Controller latency alert threshold               |
-| `timeouts`    | `multicast_repeat_count`       | Number of UDP sends per task burst               |
-| `timeouts`    | `multicast_repeat_interval_ms` | Interval (ms) between burst datagrams            |
-| `node`        | `id`                           | Unique node identifier                           |
+| Section     | Key                            | Description                                              |
+|-------------|--------------------------------|----------------------------------------------------------|
+| `global`    | `synctype`                     | `"s3"` (default, production) or `"local-files"` (testing) |
+| `multicast` | `group`                        | IPv4 multicast group (e.g. `239.1.2.3`)                  |
+| `multicast` | `port`                         | UDP port (same for all nodes)                            |
+| `multicast` | `ttl`                          | Multicast IP TTL                                         |
+| `multicast` | `interface`                    | Outbound / receive interface name (optional)             |
+| `s3`        | `endpoint`                     | Primary Ceph/S3 HTTP base URL                            |
+| `s3`        | `endpoints`                    | Optional list of fallback S3 endpoints (tried on timeout) |
+| `s3`        | `max_answer_timeout_ms`        | Per-request S3 timeout in milliseconds (default 10000)   |
+| `s3`        | `bucket`                       | Shared task-queue bucket name                            |
+| `s3`        | `access_key` / `secret_key`    | Credentials (leave empty for anonymous)                  |
+| `local_files` | `base_path`                  | Root directory for the local-files backend               |
+| `timeouts`  | `task_execution_ms`            | Watchdog task-execution timeout                          |
+| `timeouts`  | `s3_poll_interval_ms`          | Client backend poll interval                             |
+| `timeouts`  | `degradation_threshold_ms`     | Controller latency alert threshold                       |
+| `timeouts`  | `multicast_repeat_count`       | Number of UDP sends per task burst                       |
+| `timeouts`  | `multicast_repeat_interval_ms` | Interval (ms) between burst datagrams                    |
+| `node`      | `id`                           | Unique node identifier                                   |
+| `server`    | `bypass_pending_check`         | `false` (default): best-effort single execution; `true`: all-servers execute |
+
+### Multiple S3 endpoints
+
+If an S3 endpoint fails (timeout or network error), the client automatically
+rotates to the next endpoint in the `endpoints` list and retries the same
+request.  The primary `endpoint` is always tried first.
+
+```json
+"s3": {
+    "endpoint": "http://s3-primary:9000",
+    "endpoints": ["http://s3-replica1:9000", "http://s3-replica2:9000"],
+    "max_answer_timeout_ms": 3000
+}
+```
 
 ### Storage backends
 
@@ -222,8 +342,7 @@ RDMP supports two backends, selected via `global.synctype`:
 | `"s3"`         | AWS S3 / Ceph-compatible object storage (default, production)    |
 | `"local-files"`| Filesystem-backed storage under `local_files.base_path` (testing)|
 
-The `local-files` backend writes files atomically (write to `.tmp` then `rename`) and
-is fully compatible with all RDMP reliability guarantees for single-host testing.
+The `local-files` backend writes files atomically (write to `.tmp` then `rename`).
 
 ---
 
@@ -280,11 +399,32 @@ server.setTaskHandler([](const std::string& uuid,
 server.run();
 ```
 
+### Python bindings
+
+```python
+import rdmp
+
+# Create a client and submit a task
+client = rdmp.RDMPClient("client.json")
+uuid = client.add_new_task("scale-out node-7")
+client.run_once()
+
+# Create a server with a custom handler
+server = rdmp.RDMPServer("server.json")
+
+def my_handler(uuid, payload):
+    print(f"Executing task {uuid}: {payload}")
+    return "ok"
+
+server.set_task_handler(my_handler)
+server.run()
+```
+
 ---
 
 ## Testing
 
-The test suite lives in `tests/` and uses GoogleTest (fetched automatically via CMake FetchContent).
+The test suite lives in `tests/` and uses Boost.Test.
 Tests run without any real S3 cluster or network sockets, using the `local-files` backend.
 
 ### Run tests
@@ -300,9 +440,9 @@ cd build && ctest --output-on-failure
 
 | Test file                      | What is tested                                                    |
 |--------------------------------|-------------------------------------------------------------------|
-| `test_config.cpp`              | JSON config parsing, defaults, synctype, error handling           |
+| `test_config.cpp`              | JSON config parsing, defaults, synctype, S3 endpoints, bypass flag |
 | `test_common.cpp`              | UUID generation, task/status JSON round-trips, status conversions |
-| `test_local_files_backend.cpp` | put/get, list, overwrite, atomic writes, concurrent backends      |
+| `test_local_files_backend.cpp` | put/get, list (recursive), overwrite, atomic writes               |
 | `test_wire_format.cpp`         | UDP datagram serialisation/deserialisation, edge cases            |
 | `test_end_to_end.cpp`          | Full task lifecycle, jitter, retries, node failures, races        |
 
@@ -319,6 +459,9 @@ The end-to-end tests specifically cover:
 - Watchdog retry after executor crash (server node failure)
 - Handler exceptions – task marked FAILED
 - Multi-client relay scenario
+- **2-client / 3-server normal mode workflow** (spec §2.1–2.4)
+- **2-client / 3-server bypass mode workflow** (spec §2.5–2.6)
+- FAILED status prevents re-execution (spec §2.4)
 
 ---
 
@@ -327,10 +470,12 @@ The end-to-end tests specifically cover:
 | Property                  | Mechanism                                                         |
 |---------------------------|-------------------------------------------------------------------|
 | At-least-once delivery    | Each client bursts N UDP datagrams; multiple clients relay        |
-| Exactly-once execution    | Backend optimistic claim (PUT → GET verify)                       |
+| Best-effort single execution | Backend optimistic claim (PUT → GET verify); duplicate execution possible under network failures – task handlers must check UUID |
+| All-servers execution     | `bypass_pending_check=true` skips the claim race                  |
 | Crash recovery            | Watchdog re-claims stale EXECUTING tasks after timeout            |
 | Degraded controller alert | Per-source receipt-time comparison on servers                     |
 | No SPOF                   | All state in shared backend; any node can retry any task          |
+| S3 failover               | Automatic rotation to next endpoint on timeout / error            |
 
 ---
 

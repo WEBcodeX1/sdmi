@@ -25,8 +25,6 @@ static constexpr size_t RDMP_HEADER_SIZE = 46u;
 
 enum class MsgType : uint8_t {
     TASK_ANNOUNCE = 0x01,
-    HEARTBEAT     = 0x02,
-    OBJECT_PUT    = 0x03,   // multicast-reply: key/value datagram on reply group
 };
 
 // ---------------------------------------------------------------------------
@@ -48,8 +46,8 @@ TaskStatus     stringToTaskStatus(const std::string& s);
 // Configuration structures  (loaded from JSON config files)
 // ---------------------------------------------------------------------------
 
-// Sync backend selector: "s3", "local-files", or "multicast-reply"
-enum class SyncType { S3, LocalFiles, MulticastReply };
+// Sync backend selector: "s3" or "local-files"
+enum class SyncType { S3, LocalFiles };
 
 struct GlobalConfig {
     SyncType synctype = SyncType::S3;
@@ -62,21 +60,17 @@ struct MulticastConfig {
     std::string iface          = "";      // bind interface (optional)
 };
 
-// Reply multicast group used by servers to send status back to clients.
-// All client nodes subscribe to this group.
-struct MulticastReplyConfig {
-    std::string group          = "239.1.2.4";  // different group from main
-    uint16_t    port           = 5001;
-    uint8_t     ttl            = 32;
-    std::string iface          = "";
-};
-
 struct S3Config {
-    std::string endpoint   = "http://localhost:9000";
-    std::string bucket     = "rdmp-tasks";
-    std::string access_key = "";
-    std::string secret_key = "";
-    std::string region     = "us-east-1";
+    // Primary endpoint (used when 'endpoints' is empty).
+    std::string              endpoint   = "http://localhost:9000";
+    // Optional list of fallback endpoints tried in order on timeout.
+    std::vector<std::string> endpoints;
+    // Per-request timeout in milliseconds (0 = library default ~10 s).
+    uint32_t                 max_answer_timeout_ms = 10000;
+    std::string              bucket     = "rdmp-tasks";
+    std::string              access_key = "";
+    std::string              secret_key = "";
+    std::string              region     = "us-east-1";
 };
 
 struct LocalFilesConfig {
@@ -96,7 +90,6 @@ struct TimeoutConfig {
 struct ClientConfig {
     GlobalConfig         global;
     MulticastConfig      multicast;
-    MulticastReplyConfig multicast_reply;
     S3Config             s3;
     LocalFilesConfig     local_files;
     TimeoutConfig        timeouts;
@@ -106,11 +99,15 @@ struct ClientConfig {
 struct ServerConfig {
     GlobalConfig         global;
     MulticastConfig      multicast;
-    MulticastReplyConfig multicast_reply;
     S3Config             s3;
     LocalFilesConfig     local_files;
     TimeoutConfig        timeouts;
     std::string          node_id = "server1";
+    // When true: server skips the S3 pending-status check (2.4) and executes
+    // every task it receives, writing its own per-server status record.
+    // Intended for latency-sensitive deployments where duplicate execution is
+    // acceptable and de-duplication is handled by the application layer.
+    bool                 bypass_pending_check = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -150,10 +147,9 @@ std::string      extractJsonField(const std::string& json, const std::string& ke
 // Stream operators for enum types (required by Boost::Test BOOST_CHECK_EQUAL)
 inline std::ostream& operator<<(std::ostream& os, SyncType s) {
     switch (s) {
-    case SyncType::S3:             return os << "S3";
-    case SyncType::LocalFiles:     return os << "LocalFiles";
-    case SyncType::MulticastReply: return os << "MulticastReply";
-    default:                       return os << "Unknown";
+    case SyncType::S3:         return os << "S3";
+    case SyncType::LocalFiles: return os << "LocalFiles";
+    default:                   return os << "Unknown";
     }
 }
 
@@ -171,8 +167,6 @@ inline std::ostream& operator<<(std::ostream& os, TaskStatus s) {
 inline std::ostream& operator<<(std::ostream& os, MsgType m) {
     switch (m) {
     case MsgType::TASK_ANNOUNCE: return os << "TASK_ANNOUNCE";
-    case MsgType::HEARTBEAT:     return os << "HEARTBEAT";
-    case MsgType::OBJECT_PUT:    return os << "OBJECT_PUT";
     default:                     return os << "Unknown";
     }
 }
