@@ -16,8 +16,6 @@ Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
           │                            └─ Server 3
           │
           └──── S3 / Ceph Object Storage (shared task queue + status)
-                ▲
-                │  All nodes read / write task / status objects
 ```
 
 ### Diagrams / SDMI Integration
