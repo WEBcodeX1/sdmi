@@ -52,7 +52,7 @@ std::vector<uint8_t> buildDatagram(const std::string& uuid,
 struct ParsedDatagram {
     bool        valid       = false;
     uint8_t     version     = 0;
-    rdmp::MsgType msg_type  = rdmp::MsgType::HEARTBEAT;
+    rdmp::MsgType msg_type  = rdmp::MsgType::TASK_ANNOUNCE;
     std::string uuid;
     std::string payload;
 };
@@ -110,18 +110,6 @@ BOOST_AUTO_TEST_CASE(TaskAnnounceRoundTrip) {
     BOOST_CHECK_EQUAL(d.msg_type, rdmp::MsgType::TASK_ANNOUNCE);
     BOOST_CHECK_EQUAL(d.uuid,     uuid);
     BOOST_CHECK_EQUAL(d.payload,  payload);
-}
-
-BOOST_AUTO_TEST_CASE(HeartbeatRoundTrip) {
-    const std::string uuid    = rdmp::generateUUID();
-    const std::string payload = "";
-
-    auto buf = buildDatagram(uuid, rdmp::MsgType::HEARTBEAT, payload);
-    auto d   = parseDatagram(buf);
-
-    BOOST_CHECK(d.valid);
-    BOOST_CHECK_EQUAL(d.msg_type, rdmp::MsgType::HEARTBEAT);
-    BOOST_CHECK_EQUAL(d.payload,  "");
 }
 
 BOOST_AUTO_TEST_CASE(EmptyPayload) {

@@ -121,7 +121,7 @@ Offset  Size  Field
 ──────  ────  ─────────────────────────────────────────────
  0       4    Magic number: 0x52444D50 ("RDMP"), big-endian
  4       1    Protocol version: 0x01
- 5       1    Message type: 0x01 = TASK_ANNOUNCE, 0x02 = HEARTBEAT
+ 5       1    Message type: 0x01 = TASK_ANNOUNCE
  6      36    Task UUID (ASCII, e.g. "550e8400-e29b-41d4-a716-446655440000")
 42       4    Payload length N (big-endian uint32)
 46       N    Payload (arbitrary bytes)

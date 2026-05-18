@@ -25,7 +25,6 @@ static constexpr size_t RDMP_HEADER_SIZE = 46u;
 
 enum class MsgType : uint8_t {
     TASK_ANNOUNCE = 0x01,
-    HEARTBEAT     = 0x02,
 };
 
 // ---------------------------------------------------------------------------
@@ -168,7 +167,6 @@ inline std::ostream& operator<<(std::ostream& os, TaskStatus s) {
 inline std::ostream& operator<<(std::ostream& os, MsgType m) {
     switch (m) {
     case MsgType::TASK_ANNOUNCE: return os << "TASK_ANNOUNCE";
-    case MsgType::HEARTBEAT:     return os << "HEARTBEAT";
     default:                     return os << "Unknown";
     }
 }
