@@ -24,14 +24,10 @@ secret_key = your-secret-key
 region = us-east-1
 
 [timeouts]
-# Maximum time (ms) a task may remain in EXECUTING state before the watchdog retries it
+# Maximum time (ms) allowed for a task to complete
 task_execution_ms = 5000
 # S3 poll interval is used by clients; set here for completeness / future server polling
 s3_poll_interval_ms = 1000
-# Latency threshold (ms) for controller degradation alerts
-degradation_threshold_ms = 2000
-# Interval (ms) between watchdog runs on this server instance
-watchdog_interval_ms = 2000
 # Delay (ms) before retrying a failed/timed-out task (reserved for future use)
 retry_delay_ms = 3000
 # Burst repeat settings are client-side; kept here for reference

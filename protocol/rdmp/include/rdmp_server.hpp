@@ -27,14 +27,6 @@ using TaskHandler = std::function<std::string(const std::string& uuid,
 // Internal bookkeeping types
 // ---------------------------------------------------------------------------
 
-// Per-task receipt timestamps from individual client source IPs.
-// Used by the degradation detector.
-struct SourceReceipt {
-    int64_t     first_receipt_ms = 0;
-    // source_ip -> receipt_ms (populated as messages arrive)
-    std::unordered_map<std::string, int64_t> by_source;
-};
-
 // A task that this server instance is currently executing / has claimed.
 struct ExecutingTask {
     std::string uuid;
@@ -56,9 +48,6 @@ struct ExecutingTask {
 //          the task is unclaimed the server attempts to exclusively claim it
 //          via an optimistic PUT→GET cycle, then executes it through the
 //          registered TaskHandler.
-//       c. Runs the watchdog (rate-limited by watchdog_interval_ms): scans
-//          known tasks for stale EXECUTING entries and retries them.
-//       d. Updates per-source latency records for degradation detection.
 // ---------------------------------------------------------------------------
 
 class RDMPServer {
@@ -93,15 +82,6 @@ private:
     // Tasks currently claimed by *this* server instance.
     std::unordered_map<std::string, ExecutingTask> executing_;
 
-    // Task payloads received via TASK_ANNOUNCE (used by watchdog for retry
-    // without having to re-fetch from backend, especially for multicast-reply
-    // mode where there is no persistent storage).
-    std::unordered_map<std::string, std::string> task_payloads_;
-
-    // Per-task source-latency records for degradation detection.
-    std::unordered_map<std::string, SourceReceipt> receipt_times_;
-
-    int64_t last_watchdog_ms_ = 0;
     bool    running_          = false;
 
     // Socket setup (create, SO_REUSEADDR, bind, join multicast group).
@@ -112,8 +92,7 @@ private:
 
     // Handle a TASK_ANNOUNCE message.
     void handleTaskAnnounce(const std::string& uuid,
-                            const std::string& payload,
-                            const std::string& src_ip);
+                            const std::string& payload);
 
     // Attempt to exclusively claim a task via optimistic backend PUT→GET.
     // Returns true when this server successfully becomes the executor.
@@ -132,12 +111,6 @@ private:
                           TaskStatus         status,
                           const std::string& server_id = "",
                           const std::string& result    = "");
-
-    // Watchdog: detect timed-out executions and retry.
-    void runWatchdog();
-
-    // Check per-source receipt latencies and emit degradation alerts.
-    void checkDegradation(const std::string& uuid);
 };
 
 } // namespace rdmp

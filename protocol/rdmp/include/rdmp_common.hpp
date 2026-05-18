@@ -80,8 +80,6 @@ struct LocalFilesConfig {
 struct TimeoutConfig {
     uint32_t task_execution_ms          = 5000;
     uint32_t s3_poll_interval_ms        = 1000;
-    uint32_t degradation_threshold_ms   = 2000;
-    uint32_t watchdog_interval_ms       = 2000;
     uint32_t retry_delay_ms             = 3000;
     uint32_t multicast_repeat_count     = 3;
     uint32_t multicast_repeat_interval_ms = 100;

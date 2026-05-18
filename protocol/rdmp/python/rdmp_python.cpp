@@ -130,10 +130,6 @@ BOOST_PYTHON_MODULE(rdmp) {
                        &rdmp::TimeoutConfig::task_execution_ms)
         .def_readwrite("s3_poll_interval_ms",
                        &rdmp::TimeoutConfig::s3_poll_interval_ms)
-        .def_readwrite("degradation_threshold_ms",
-                       &rdmp::TimeoutConfig::degradation_threshold_ms)
-        .def_readwrite("watchdog_interval_ms",
-                       &rdmp::TimeoutConfig::watchdog_interval_ms)
         .def_readwrite("retry_delay_ms",
                        &rdmp::TimeoutConfig::retry_delay_ms)
         .def_readwrite("multicast_repeat_count",

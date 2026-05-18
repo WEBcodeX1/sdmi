@@ -4,7 +4,7 @@
 
 RDMP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed **on at least one** server endpoint – or, in bypass mode, on every server endpoint.
 
-The canonical use case in the SDMI context is issuing scale-up / scale-down commands to a fleet of infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss, delayed retransmission, split-brain S3 access) a task **may still be executed by more than one server**; the task handler must therefore be idempotent and **check the task UUID** to guard against unintended re-execution.
+The canonical use case in the SDMI context is issuing scale-up / scale-down commands to a fleet of infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**; the task handler must therefore be idempotent and **check the task UUID** to guard against unintended re-execution.
 
 **Key properties:**
 
@@ -64,10 +64,10 @@ Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
        (optimistic last-write-wins concurrency). If ownership confirmed: execute.
      - On completion: writes `status=completed` (or `failed`) to `status/<uuid>`.
      - Result: **1 status object** per task in the bucket under normal conditions.
-        Under adverse network conditions (delayed duplicate announces, S3 write
-        races, or watchdog re-claim after a transient failure) **more than one
-        server may execute the same task**. Task handlers **must** be idempotent
-        and check the task UUID at the endpoint to prevent unintended re-execution.
+        Under adverse network conditions (delayed duplicate announces or S3 write
+        races) **more than one server may execute the same task**. Task handlers
+        **must** be idempotent and check the task UUID at the endpoint to prevent
+        unintended re-execution.
 
      **Bypass mode (`bypass_pending_check = true`):**
      - Skips the S3 status check entirely. Every server that receives the
@@ -77,19 +77,6 @@ Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
      - Result: **N status objects** per task (one per server). De-duplication
        of the actual side-effect is the responsibility of the executing
        application (e.g. checking a UUID in disk / memory).
-
-3. **Watchdog** (rate-limited, runs inside `runOnce()`):
-   - Active only in normal mode.
-   - Scans locally known tasks for stale `EXECUTING` entries.
-   - For tasks that have exceeded `task_execution_ms`: resets backend status to
-     `pending` and re-runs the claim/execute cycle.
-   - Also discovers unknown executing tasks from the S3 listing (handles
-     peer-node crashes).
-
-4. **Degradation detection**:
-   - Tracks the first receipt time of each UUID per source IP.
-   - If a source IP's message arrives more than `degradation_threshold_ms`
-     after the first, a `CRITICAL` alert is emitted to stderr.
 
 ---
 
@@ -217,8 +204,6 @@ Both binaries accept a single argument: the path to a **JSON** config file.
     "timeouts": {
         "task_execution_ms": 5000,
         "s3_poll_interval_ms": 1000,
-        "degradation_threshold_ms": 2000,
-        "watchdog_interval_ms": 2000,
         "retry_delay_ms": 3000,
         "multicast_repeat_count": 3,
         "multicast_repeat_interval_ms": 100
@@ -257,8 +242,6 @@ Both binaries accept a single argument: the path to a **JSON** config file.
     "timeouts": {
         "task_execution_ms": 5000,
         "s3_poll_interval_ms": 1000,
-        "degradation_threshold_ms": 2000,
-        "watchdog_interval_ms": 2000,
         "retry_delay_ms": 3000,
         "multicast_repeat_count": 3,
         "multicast_repeat_interval_ms": 100
@@ -287,9 +270,8 @@ Both binaries accept a single argument: the path to a **JSON** config file.
 | `s3`        | `bucket`                       | Shared task-queue bucket name                            |
 | `s3`        | `access_key` / `secret_key`    | Credentials (leave empty for anonymous)                  |
 | `local_files` | `base_path`                  | Root directory for the local-files backend               |
-| `timeouts`  | `task_execution_ms`            | Watchdog task-execution timeout                          |
+| `timeouts`  | `task_execution_ms`            | Maximum time (ms) allowed for task execution             |
 | `timeouts`  | `s3_poll_interval_ms`          | Client backend poll interval                             |
-| `timeouts`  | `degradation_threshold_ms`     | Controller latency alert threshold                       |
 | `timeouts`  | `multicast_repeat_count`       | Number of UDP sends per task burst                       |
 | `timeouts`  | `multicast_repeat_interval_ms` | Interval (ms) between burst datagrams                    |
 | `node`      | `id`                           | Unique node identifier                                   |
@@ -319,6 +301,30 @@ RDMP supports two backends, selected via `global.synctype`:
 | `"local-files"`| Filesystem-backed storage under `local_files.base_path` (testing)|
 
 The `local-files` backend writes files atomically (write to `.tmp` then `rename`).
+
+### Recommended backend: local Ceph with S3 object storage
+
+For production deployments, it is **strongly recommended** to run a **local Ceph cluster** (co-located with your RDMP nodes) and configure RDMP to use its S3-compatible object storage (Ceph RadosGW).
+
+A local Ceph cluster provides:
+
+- **Lowest possible latency** – storage I/O stays on the local network segment, avoiding WAN round-trips that would increase claim-cycle times.
+- **No external dependency** – the entire RDMP shared state is contained within your own infrastructure.
+- **High availability** – Ceph replicates data across multiple OSDs, so there is no single storage point of failure.
+- **S3 API compatibility** – no code changes required; simply point the `s3.endpoint` at your Ceph RadosGW URL.
+
+Example configuration snippet for a local Ceph RadosGW:
+
+```json
+"s3": {
+    "endpoint": "http://ceph-rgw.internal:7480",
+    "bucket": "rdmp-tasks",
+    "access_key": "your-ceph-access-key",
+    "secret_key": "your-ceph-secret-key",
+    "region": "us-east-1",
+    "max_answer_timeout_ms": 3000
+}
+```
 
 ---
 
@@ -432,7 +438,6 @@ The end-to-end tests specifically cover:
 - Client node failure – task discovered via backend polling
 - Jitter – delayed second announce after task already completed
 - Send delay – announce ignored when task already executed by peer
-- Watchdog retry after executor crash (server node failure)
 - Handler exceptions – task marked FAILED
 - Multi-client relay scenario
 - **2-client / 3-server normal mode workflow** (spec §2.1–2.4)
@@ -448,8 +453,6 @@ The end-to-end tests specifically cover:
 | At-least-once delivery    | Each client bursts N UDP datagrams; multiple clients relay        |
 | Best-effort single execution | Backend optimistic claim (PUT → GET verify); duplicate execution possible under network failures – task handlers must check UUID |
 | All-servers execution     | `bypass_pending_check=true` skips the claim race                  |
-| Crash recovery            | Watchdog re-claims stale EXECUTING tasks after timeout            |
-| Degraded controller alert | Per-source receipt-time comparison on servers                     |
 | No SPOF                   | All state in shared backend; any node can retry any task          |
 | S3 failover               | Automatic rotation to next endpoint on timeout / error            |
 

@@ -28,7 +28,6 @@ RDMPServer::RDMPServer(const std::string& config_path)
     : config_(loadServerConfig(config_path)),
       backend_(makeStorageBackend(config_)) {
     setupSocket();
-    last_watchdog_ms_ = currentTimeMs();
 }
 
 RDMPServer::~RDMPServer() {
@@ -139,10 +138,9 @@ bool RDMPServer::receiveAndProcess() {
     if (static_cast<ssize_t>(RDMP_HEADER_SIZE + pay_len) > n) return false;
 
     const std::string payload(reinterpret_cast<char*>(buf + RDMP_HEADER_SIZE), pay_len);
-    const std::string src_ip(inet_ntoa(src_addr.sin_addr));
 
     if (msg_type == MsgType::TASK_ANNOUNCE) {
-        handleTaskAnnounce(uuid, payload, src_ip);
+        handleTaskAnnounce(uuid, payload);
     }
     return true;
 }
@@ -162,19 +160,7 @@ std::string RDMPServer::statusKey(const std::string& uuid) const {
 // ---------------------------------------------------------------------------
 
 void RDMPServer::handleTaskAnnounce(const std::string& uuid,
-                                     const std::string& payload,
-                                     const std::string& src_ip) {
-    // Cache task payload for watchdog retry (avoids backend fetch on retry).
-    if (!payload.empty())
-        task_payloads_.emplace(uuid, payload);
-
-    // Record receipt time for degradation detection
-    const int64_t now = currentTimeMs();
-    auto& rec = receipt_times_[uuid];
-    if (rec.first_receipt_ms == 0) rec.first_receipt_ms = now;
-    rec.by_source[src_ip] = now;
-    checkDegradation(uuid);
-
+                                     const std::string& payload) {
     if (config_.bypass_pending_check) {
         // Bypass mode: skip the shared S3 status check entirely.
         // Every server executes the task independently; each writes its own
@@ -313,147 +299,12 @@ void RDMPServer::updateTaskStatus(const std::string& uuid,
 }
 
 // ---------------------------------------------------------------------------
-// Watchdog
-// ---------------------------------------------------------------------------
-
-void RDMPServer::runWatchdog() {
-    // Watchdog only applies in normal (non-bypass) mode.
-    if (config_.bypass_pending_check) return;
-
-    const int64_t now = currentTimeMs();
-    if (now - last_watchdog_ms_ <
-        static_cast<int64_t>(config_.timeouts.watchdog_interval_ms)) {
-        return;
-    }
-    last_watchdog_ms_ = now;
-
-    // Scan all tasks we have locally recorded as EXECUTING
-    for (auto& [uuid, status_rec] : local_status_) {
-        if (status_rec.status != TaskStatus::EXECUTING) continue;
-
-        // Fetch fresh backend status
-        std::string body = backend_->getObject(statusKey(uuid));
-        if (body.empty()) continue;
-
-        TaskStatusRecord fresh = parseTaskStatus(body);
-        local_status_[uuid]   = fresh;
-
-        if (fresh.status != TaskStatus::EXECUTING) continue;
-
-        // Check how long ago this task was claimed
-        // updated_at is stored as ISO-8601; parse epoch seconds from it.
-        // As a simplified approach we compare with our executing_ map start time.
-        auto et_it = executing_.find(uuid);
-        int64_t started_ms;
-        if (et_it != executing_.end()) {
-            started_ms = et_it->second.started_ms;
-        } else {
-            // Task is executing on another node; estimate start from now if
-            // we don't have a local record.  If we have never seen it, skip.
-            continue;
-        }
-
-        const int64_t elapsed = now - started_ms;
-        if (elapsed < static_cast<int64_t>(config_.timeouts.task_execution_ms)) {
-            continue;
-        }
-
-        // Timed out – mark as failed first, then reset to PENDING for retry.
-        std::cerr << "[RDMP/Server] Watchdog: task " << uuid
-                  << " timed out (executor=" << fresh.server_id
-                  << "), retrying\n";
-
-        executing_.erase(uuid);
-
-        // Fetch task payload from cache first, then fall back to backend
-        std::string payload;
-        auto cache_it = task_payloads_.find(uuid);
-        if (cache_it != task_payloads_.end()) {
-            payload = cache_it->second;
-        } else {
-            std::string task_body = backend_->getObject(S3_TASK_PREFIX + uuid);
-            if (task_body.empty()) {
-                std::cerr << "[RDMP/Server] Cannot fetch task payload for retry: "
-                          << uuid << "\n";
-                continue;
-            }
-            Task t = parseTask(task_body);
-            if (t.uuid.empty()) continue;
-            payload = t.payload;
-        }
-
-        // Reset backend status to PENDING so tryClaimTask succeeds
-        TaskStatusRecord pending_rec;
-        pending_rec.uuid       = uuid;
-        pending_rec.status     = TaskStatus::PENDING;
-        pending_rec.server_id  = "";
-        pending_rec.updated_at = currentTimestamp();
-        backend_->putObject(statusKey(uuid), buildStatusJson(pending_rec));
-        local_status_[uuid].status = TaskStatus::PENDING;
-
-        if (tryClaimTask(uuid)) {
-            executeTask(uuid, payload);
-        }
-    }
-
-    // Also check S3 for executing tasks this server does NOT know about,
-    // which could have been left by crashed peers.
-    std::vector<std::string> status_keys = backend_->listObjects(S3_STATUS_PREFIX);
-    for (const auto& key : status_keys) {
-        if (key.size() <= S3_STATUS_PREFIX.size()) continue;
-        const std::string uuid = key.substr(S3_STATUS_PREFIX.size());
-        if (local_status_.count(uuid)) continue; // already tracked
-
-        std::string body = backend_->getObject(key);
-        if (body.empty()) continue;
-
-        TaskStatusRecord rec = parseTaskStatus(body);
-        if (rec.status != TaskStatus::EXECUTING) {
-            local_status_[uuid] = rec;
-            continue;
-        }
-
-        // Unknown executing task – mark locally so next watchdog cycle
-        // can track it.
-        ExecutingTask et;
-        et.uuid        = uuid;
-        et.started_ms  = now; // conservative: assume it just started
-        et.retry_count = 0;
-        executing_[uuid]    = et;
-        local_status_[uuid] = rec;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Degradation detection
-// ---------------------------------------------------------------------------
-
-void RDMPServer::checkDegradation(const std::string& uuid) {
-    auto it = receipt_times_.find(uuid);
-    if (it == receipt_times_.end()) return;
-
-    const SourceReceipt& rec     = it->second;
-    const int64_t        first   = rec.first_receipt_ms;
-    const int64_t        thresh  = config_.timeouts.degradation_threshold_ms;
-
-    for (const auto& [src, ts] : rec.by_source) {
-        const int64_t delta = ts - first;
-        if (delta > thresh) {
-            std::cerr << "[RDMP/Server] ALERT: Controller " << src
-                      << " is degraded – task " << uuid
-                      << " arrived " << delta << " ms late\n";
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 void RDMPServer::runOnce() {
     backend_->sync();
     receiveAndProcess();
-    runWatchdog();
 }
 
 void RDMPServer::run() {

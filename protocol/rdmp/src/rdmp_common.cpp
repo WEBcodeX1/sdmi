@@ -268,8 +268,6 @@ static TimeoutConfig loadTimeoutsJson(const json& j) {
     const auto& tj = j["timeouts"];
     t.task_execution_ms          = tj.value("task_execution_ms",          t.task_execution_ms);
     t.s3_poll_interval_ms        = tj.value("s3_poll_interval_ms",        t.s3_poll_interval_ms);
-    t.degradation_threshold_ms   = tj.value("degradation_threshold_ms",   t.degradation_threshold_ms);
-    t.watchdog_interval_ms       = tj.value("watchdog_interval_ms",        t.watchdog_interval_ms);
     t.retry_delay_ms             = tj.value("retry_delay_ms",              t.retry_delay_ms);
     t.multicast_repeat_count     = tj.value("multicast_repeat_count",      t.multicast_repeat_count);
     t.multicast_repeat_interval_ms = tj.value("multicast_repeat_interval_ms",

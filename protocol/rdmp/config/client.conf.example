@@ -24,14 +24,10 @@ secret_key = your-secret-key
 region = us-east-1
 
 [timeouts]
-# Maximum time (ms) allowed for a task to complete before the watchdog retries it
+# Maximum time (ms) allowed for a task to complete
 task_execution_ms = 5000
 # Interval (ms) between S3 bucket polls for new tasks from other clients
 s3_poll_interval_ms = 1000
-# Latency threshold (ms) beyond which a controller is considered degraded
-degradation_threshold_ms = 2000
-# Interval (ms) between watchdog runs (server-side setting, ignored by client)
-watchdog_interval_ms = 2000
 # Delay (ms) before retrying a failed/timed-out task
 retry_delay_ms = 3000
 # Number of UDP multicast datagrams sent per task announcement (burst count)
@@ -40,5 +36,5 @@ multicast_repeat_count = 3
 multicast_repeat_interval_ms = 100
 
 [node]
-# Unique identifier for this client instance (used in task metadata and alerts)
+# Unique identifier for this client instance (used in task metadata)
 id = client1
