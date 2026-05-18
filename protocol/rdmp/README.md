@@ -4,7 +4,7 @@
 
 RDMP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed **on at least one** server endpoint – or, in bypass mode, on every server endpoint.
 
-The canonical use case in the SDMI context is issuing scale-up / scale-down commands to single decentralized infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**; the implementor of the executing network entity **should** therefore check the task UUID on their side to guard against unintended re-execution.
+The canonical use case in the SDMI context is issuing scale-up / scale-down commands to single decentralized infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**.
 
 ---
 
@@ -29,7 +29,7 @@ As example the desired SDMI integration for scaling up a distributed docker envi
 - Docker Orchestrator VM1 (datacenter1): 10.10.100.253
 - Docker Orchestrator VM2 (datacenter2): 10.10.100.254
 
-The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-scale tasks to `sdmi-orch-seg1-node1` with IPv4 10.10.100.253 and `sdmi-orch-seg1-node2` with IPv4 10.10.100.254 using the SDMI RDMP architecture.
+The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-scale tasks to `sdmi-orch-seg1-node1` with IPv4 10.10.100.253 and `sdmi-orch-seg1-node2` with IPv4 10.10.100.254 using the SDMI RMDP architecture.
 
 **Orchestartor Communication Node1**
 
