@@ -4,7 +4,7 @@
 
 RDMP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed **on at least one** server endpoint – or, in bypass mode, on every server endpoint.
 
-The canonical use case in the SDMI context is issuing scale-up / scale-down commands to single decentralized infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**; the task handler must therefore be idempotent and **check the task UUID** to guard against unintended re-execution.
+The canonical use case in the SDMI context is issuing scale-up / scale-down commands to single decentralized infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**; the implementor of the executing network entity **should** therefore check the task UUID on their side to guard against unintended re-execution.
 
 ---
 
@@ -77,9 +77,9 @@ The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-
      - On completion: writes `status=completed` (or `failed`) to `status/<uuid>`.
      - Result: **1 status object** per task in the bucket under normal conditions.
         Under adverse network conditions (delayed duplicate announces or S3 write
-        races) **more than one server may execute the same task**. Task handlers
-        **must** be idempotent and check the task UUID at the endpoint to prevent
-        unintended re-execution.
+        races) **more than one server may execute the same task**. The implementor
+        of the executing network entity **should** check the task UUID on their
+        side to prevent unintended re-execution.
 
      **Bypass mode (`bypass_pending_check = true`):**
      - Skips the S3 status check entirely. Every server that receives the
