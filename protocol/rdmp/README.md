@@ -6,29 +6,6 @@ RDMP transmits **tasks 100% reliably** using multiple client and server entities
 
 The canonical use case in the SDMI context is issuing scale-up / scale-down commands to a fleet of infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss, delayed retransmission, split-brain S3 access) a task **may still be executed by more than one server**; the task handler must therefore be idempotent and **check the task UUID** to guard against unintended re-execution.
 
-### How a task flows through the system
-
-```
- External entity
-   │
-   │ 1. addNewTask("scale-out node-7")
-   │    → writes tasks/<uuid> to S3 (status: pending)
-   │
-   ├─── Client 1 ─────────────────────────────┐
-   │    (polls S3, sees NEW task)              │  UDP multicast (3×) → Server 1
-   │                                           ├→ UDP multicast (3×) → Server 2
-   └─── Client 2 ─────────────────────────────┤  UDP multicast (3×) → Server 3
-        (polls S3, sees NEW task, relays too)  │
-                                               │
-                                        Each server on receipt:
-                                          2. reads status/<uuid> from S3
-                                          3. if NOT "pending" → skip
-                                          4. if "pending" → write "executing"
-                                               re-read to verify ownership
-                                          5. execute task
-                                          6. write "completed" or "failed"
-```
-
 **Key properties:**
 
 | Property | Mechanism |
