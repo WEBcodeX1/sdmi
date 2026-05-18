@@ -12,18 +12,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# On some systems (e.g. Debian/Ubuntu) curl headers are installed under the
-# multiarch-qualified include directory; ensure they are discoverable.
-if(CURL_FOUND AND NOT EXISTS "${CURL_INCLUDE_DIR}/curl/curl.h")
-    find_path(CURL_INCLUDE_DIR NAMES curl/curl.h
-        PATHS /usr/include/x86_64-linux-gnu
-              /usr/local/include
-        NO_DEFAULT_PATH)
-    if(CURL_INCLUDE_DIR)
-        message(STATUS "Using curl include dir: ${CURL_INCLUDE_DIR}")
-    endif()
-endif()
-
 # ---------------------------------------------------------------------------
 # Shared library: protocol core (common utilities + backends)
 # ---------------------------------------------------------------------------
@@ -40,11 +28,6 @@ add_library(rdmp_core STATIC
 set_target_properties(rdmp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(rdmp_core PUBLIC include)
-# Ensure the multiarch curl include path is available when headers live under
-# a qualified directory (e.g. /usr/include/x86_64-linux-gnu on Debian/Ubuntu).
-if(CURL_INCLUDE_DIR)
-    target_include_directories(rdmp_core PRIVATE "${CURL_INCLUDE_DIR}")
-endif()
 
 target_link_libraries(rdmp_core PUBLIC
     CURL::libcurl
