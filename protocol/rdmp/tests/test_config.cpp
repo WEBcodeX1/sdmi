@@ -65,8 +65,6 @@ BOOST_AUTO_TEST_CASE(ClientFullConfig) {
         "timeouts": {
             "task_execution_ms": 1000,
             "s3_poll_interval_ms": 500,
-            "degradation_threshold_ms": 800,
-            "watchdog_interval_ms": 1200,
             "retry_delay_ms": 2000,
             "multicast_repeat_count": 5,
             "multicast_repeat_interval_ms": 200
@@ -95,8 +93,6 @@ BOOST_AUTO_TEST_CASE(ClientFullConfig) {
     BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/var/rdmp");
     BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,        1000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,       500u);
-    BOOST_CHECK_EQUAL(cfg.timeouts.degradation_threshold_ms,  800u);
-    BOOST_CHECK_EQUAL(cfg.timeouts.watchdog_interval_ms,     1200u);
     BOOST_CHECK_EQUAL(cfg.timeouts.retry_delay_ms,           2000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.multicast_repeat_count,      5u);
     BOOST_CHECK_EQUAL(cfg.timeouts.multicast_repeat_interval_ms, 200u);
@@ -146,8 +142,6 @@ BOOST_AUTO_TEST_CASE(ClientDefaults) {
     BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/tmp/rdmp-tasks");
     BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,        5000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,      1000u);
-    BOOST_CHECK_EQUAL(cfg.timeouts.degradation_threshold_ms, 2000u);
-    BOOST_CHECK_EQUAL(cfg.timeouts.watchdog_interval_ms,     2000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.retry_delay_ms,           3000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.multicast_repeat_count,      3u);
     BOOST_CHECK_EQUAL(cfg.timeouts.multicast_repeat_interval_ms, 100u);

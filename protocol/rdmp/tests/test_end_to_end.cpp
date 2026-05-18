@@ -9,12 +9,10 @@
 //  2. Multiple concurrent tasks (different UUIDs)
 //  3. Duplicate announce: server ignores a task it has already completed
 //  4. Task claim race: only one "server" wins the optimistic PUT→GET
-//  5. Watchdog retry on simulated executor crash / timeout
-//  6. Jitter / send delay: task arrives with delayed second announce
-//  7. Multiple burst sends of the same task (idempotent execution)
-//  8. Client node failure: task written to backend but no announce sent;
+//  5. Jitter / send delay: task arrives with delayed second announce
+//  6. Multiple burst sends of the same task (idempotent execution)
+//  7. Client node failure: task written to backend but no announce sent;
 //     backend polling still discovers it
-//  9. Server node failure: timed-out EXECUTING task is re-claimed
 
 #include <boost/test/unit_test.hpp>
 
@@ -22,12 +20,10 @@
 #include "rdmp_local_files.hpp"
 #include "rdmp_backend.hpp"
 
-#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -44,10 +40,8 @@ using namespace rdmp;
 class FakeServer {
 public:
     FakeServer(const std::string& id,
-               std::shared_ptr<LocalFilesBackend> backend,
-               uint32_t task_execution_ms = 5000)
-        : id_(id), backend_(std::move(backend)),
-          task_execution_ms_(task_execution_ms) {}
+               std::shared_ptr<LocalFilesBackend> backend)
+        : id_(id), backend_(std::move(backend)) {}
 
     // Simulate receiving a TASK_ANNOUNCE.
     // Returns true if this server claimed and executed the task.
@@ -66,36 +60,6 @@ public:
         return tryClaimAndExecute(uuid, payload);
     }
 
-    // Simulate the watchdog for tasks that have timed out.
-    // Returns the number of tasks retried.
-    int runWatchdog() {
-        int retried = 0;
-        const int64_t now = currentTimeMs();
-        for (auto& [uuid, et] : executing_) {
-            if (now - et.started_ms >= static_cast<int64_t>(task_execution_ms_)) {
-                // Timed out
-                std::string body = backend_->getObject("status/" + uuid);
-                if (body.empty()) continue;
-                TaskStatusRecord fresh = parseTaskStatus(body);
-                if (fresh.status != TaskStatus::EXECUTING) continue;
-
-                // Mark failed and retry
-                updateStatus(uuid, TaskStatus::FAILED, "watchdog timeout");
-                executing_.erase(uuid);
-
-                std::string task_body = backend_->getObject("tasks/" + uuid);
-                if (task_body.empty()) continue;
-                Task t = parseTask(task_body);
-                local_status_[uuid].status = TaskStatus::PENDING;
-
-                tryClaimAndExecute(t.uuid, t.payload);
-                ++retried;
-                break; // restart iteration safely
-            }
-        }
-        return retried;
-    }
-
     TaskStatus getLocalStatus(const std::string& uuid) const {
         auto it = local_status_.find(uuid);
         if (it == local_status_.end()) return TaskStatus::UNKNOWN;
@@ -109,48 +73,11 @@ public:
         handler_ = std::move(h);
     }
 
-    // Simulate this server crashing mid-execution (mark as executing but
-    // never complete – used for watchdog tests).
-    bool claimOnly(const std::string& uuid) {
-        std::string existing = backend_->getObject("status/" + uuid);
-        if (!existing.empty()) {
-            TaskStatusRecord cur = parseTaskStatus(existing);
-            if (cur.status == TaskStatus::EXECUTING ||
-                cur.status == TaskStatus::COMPLETED) {
-                local_status_[uuid] = cur;
-                return false;
-            }
-        }
-        TaskStatusRecord claim;
-        claim.uuid       = uuid;
-        claim.status     = TaskStatus::EXECUTING;
-        claim.server_id  = id_;
-        claim.updated_at = currentTimestamp();
-        if (!backend_->putObject("status/" + uuid, buildStatusJson(claim)))
-            return false;
-
-        // Verify
-        std::string verify = backend_->getObject("status/" + uuid);
-        TaskStatusRecord verified = parseTaskStatus(verify);
-        if (verified.server_id != id_) {
-            local_status_[uuid] = verified;
-            return false;
-        }
-
-        ExecutingTask et;
-        et.uuid       = uuid;
-        et.started_ms = currentTimeMs() - static_cast<int64_t>(task_execution_ms_) - 1000;
-        executing_[uuid]    = et;
-        local_status_[uuid] = claim;
-        return true;
-    }
-
 private:
     struct ExecutingTask { std::string uuid; int64_t started_ms = 0; };
 
     std::string id_;
     std::shared_ptr<LocalFilesBackend> backend_;
-    uint32_t task_execution_ms_;
     std::function<std::string(const std::string&, const std::string&)> handler_;
     std::unordered_map<std::string, TaskStatusRecord> local_status_;
     std::unordered_map<std::string, ExecutingTask> executing_;
@@ -494,70 +421,7 @@ BOOST_AUTO_TEST_CASE(SendDelayAnnounceIgnoredWhenAlreadyExecutedByPeer) {
 }
 
 // ---------------------------------------------------------------------------
-// 9. Watchdog: crashed executor leaves EXECUTING; watchdog retries
-// ---------------------------------------------------------------------------
-
-BOOST_AUTO_TEST_CASE(WatchdogRetryAfterExecutorCrash) {
-    FakeClient client("c1", backend_);
-
-    // crashed_server claims the task but "crashes" before completing it
-    {
-        FakeServer crashed("crashed-srv", backend_, /*task_execution_ms=*/100);
-        const std::string uuid = client.addTask("recovery-task");
-        Task t = parseTask(backend_->getObject("tasks/" + uuid));
-
-        // Claim only (simulate crash after claim, before completion)
-        crashed.claimOnly(t.uuid);
-        BOOST_CHECK_EQUAL(readStatus(t.uuid), TaskStatus::EXECUTING);
-
-        // recovery_server runs watchdog and takes over
-        int exec_count = 0;
-        FakeServer recovery("recovery-srv", backend_, /*task_execution_ms=*/100);
-        recovery.setHandler([&](const std::string&, const std::string&) {
-            ++exec_count;
-            return "recovered";
-        });
-
-        // Wait enough time for watchdog timeout (task_execution_ms + margin)
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-        // Inject the task into recovery server's executing_ via handleAnnounce
-        // to simulate it discovering the orphaned task:
-        int retried = recovery.runWatchdog();
-        // If the task wasn't locally tracked, the watchdog won't find it;
-        // instead simulate re-discovery via backend listing.
-        if (retried == 0) {
-            // recovery server sees the task via backend listing
-            auto keys = backend_->listObjects("tasks/");
-            for (const auto& key : keys) {
-                const std::string pfx = "tasks/";
-                if (key.size() <= pfx.size()) continue;
-                std::string task_uuid = key.substr(pfx.size());
-                // Check status
-                std::string sbody = backend_->getObject("status/" + task_uuid);
-                if (sbody.empty()) continue;
-                TaskStatusRecord sr = parseTaskStatus(sbody);
-                if (sr.status == TaskStatus::EXECUTING) {
-                    // Mark PENDING and re-claim
-                    TaskStatusRecord pending;
-                    pending.uuid       = task_uuid;
-                    pending.status     = TaskStatus::PENDING;
-                    pending.server_id  = "";
-                    pending.updated_at = currentTimestamp();
-                    backend_->putObject("status/" + task_uuid, buildStatusJson(pending));
-
-                    Task task = parseTask(backend_->getObject("tasks/" + task_uuid));
-                    recovery.handleAnnounce(task_uuid, task.payload);
-                }
-            }
-        }
-
-        BOOST_CHECK_EQUAL(readStatus(t.uuid), TaskStatus::COMPLETED);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// 10. Handler throws: task marked FAILED, status persisted
+// 9. Handler throws: task marked FAILED, status persisted
 // ---------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(HandlerExceptionMarksFailed) {
@@ -576,7 +440,7 @@ BOOST_AUTO_TEST_CASE(HandlerExceptionMarksFailed) {
 }
 
 // ---------------------------------------------------------------------------
-// 11. Multiple clients relay the same task (multi-client scenario)
+// 10. Multiple clients relay the same task (multi-client scenario)
 // ---------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(MultiClientRelayAllSeeTask) {
@@ -608,7 +472,7 @@ BOOST_AUTO_TEST_CASE(MultiClientRelayAllSeeTask) {
 }
 
 // ---------------------------------------------------------------------------
-// 12. Full workflow: 2 clients + 3 servers, normal mode (spec 2.1–2.4)
+// 11. Full workflow: 2 clients + 3 servers, normal mode (spec 2.1–2.4)
 //
 //  - An external entity adds a task via addTask() (simulating addNewTask()).
 //  - Both clients discover the pending task via backend polling.
@@ -663,7 +527,7 @@ BOOST_AUTO_TEST_CASE(TwoClientThreeServerWorkflowNormalMode) {
 }
 
 // ---------------------------------------------------------------------------
-// 13. Full workflow: 2 clients + 3 servers, bypass mode (spec 2.5/2.6)
+// 12. Full workflow: 2 clients + 3 servers, bypass mode (spec 2.5/2.6)
 //
 //  - bypass_pending_check = true: every server executes the task.
 //  - All 3 servers write their own per-server status records.

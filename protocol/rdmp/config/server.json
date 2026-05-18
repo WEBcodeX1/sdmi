@@ -23,8 +23,6 @@
     "timeouts": {
         "task_execution_ms": 5000,
         "s3_poll_interval_ms": 1000,
-        "degradation_threshold_ms": 2000,
-        "watchdog_interval_ms": 2000,
         "retry_delay_ms": 3000,
         "multicast_repeat_count": 3,
         "multicast_repeat_interval_ms": 100
