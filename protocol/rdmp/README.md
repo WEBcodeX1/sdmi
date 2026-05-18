@@ -196,7 +196,7 @@ Both binaries accept a single argument: the path to a **JSON** config file.
         "bucket": "rdmp-tasks",
         "access_key": "your-access-key",
         "secret_key": "your-secret-key",
-        "region": "us-east-1"
+        "region": "int-segment-1"
     },
     "local_files": {
         "base_path": "/tmp/rdmp-tasks"
@@ -234,7 +234,7 @@ Both binaries accept a single argument: the path to a **JSON** config file.
         "bucket": "rdmp-tasks",
         "access_key": "your-access-key",
         "secret_key": "your-secret-key",
-        "region": "us-east-1"
+        "region": "int-segment-1"
     },
     "local_files": {
         "base_path": "/tmp/rdmp-tasks"
