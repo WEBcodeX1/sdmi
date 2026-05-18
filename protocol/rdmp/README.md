@@ -33,11 +33,11 @@ The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-
 
 **Orchestartor Communication Node1**
 
-![OrchestratorUpscaleNode1](/diagrams/SDMI-Orchestrator-Example-Upscale-Node1.png)
+![OrchestratorUpscaleNode1](/diagram/SDMI-Orchestrator-Example-Upscale-Node1.png)
 
 **Orchestartor Communication Node2**
 
-![OrchestratorUpscaleNode2](/diagrams/SDMI-Orchestrator-Example-Upscale-Node2.png)
+![OrchestratorUpscaleNode2](/diagram/SDMI-Orchestrator-Example-Upscale-Node2.png)
 
 > [NOTE!]
 > Note that the monitoring nodes shold be responsible for task-re-execution on task failure, **not** the RDMP protocol for a strict layer seperation.
