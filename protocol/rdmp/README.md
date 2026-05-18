@@ -22,10 +22,10 @@ Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
 
 As example the desired SDMI integration for scaling up a distributed docker environment (multi-datacenter setup).
 
-- Docker Container Subnet: 172.17.100.0/24
-- Docker Orchestrator Subnet: 10.10.100.0/24
-- Docker Orchestrator VM1 (datacenter1): 10.10.100.253
-- Docker Orchestrator VM2 (datacenter2): 10.10.100.254
+- Docker Container Subnet: `172.17.100.0/24`
+- Docker Orchestrator Subnet: `10.10.100.0/24`
+- Docker Orchestrator VM1 (datacenter1): `10.10.100.253`
+- Docker Orchestrator VM2 (datacenter2): `10.10.100.254`
 
 The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-scale tasks to `sdmi-orch-seg1-node1` with IPv4 10.10.100.253 and `sdmi-orch-seg1-node2` with IPv4 10.10.100.254 using the SDMI RMDP architecture.
 
