@@ -212,8 +212,7 @@ TaskStatusRecord parseTaskStatus(const std::string& json) {
 using nlohmann::json;
 
 static SyncType parseSyncType(const std::string& s) {
-    if (s == "local-files")      return SyncType::LocalFiles;
-    if (s == "multicast-reply")  return SyncType::MulticastReply;
+    if (s == "local-files") return SyncType::LocalFiles;
     return SyncType::S3;
 }
 
@@ -246,6 +245,12 @@ static S3Config loadS3Json(const json& j) {
     s.access_key = sj.value("access_key", s.access_key);
     s.secret_key = sj.value("secret_key", s.secret_key);
     s.region     = sj.value("region",     s.region);
+    s.max_answer_timeout_ms = sj.value("max_answer_timeout_ms",
+                                        s.max_answer_timeout_ms);
+    if (sj.contains("endpoints") && sj["endpoints"].is_array()) {
+        for (const auto& ep : sj["endpoints"])
+            if (ep.is_string()) s.endpoints.push_back(ep.get<std::string>());
+    }
     return s;
 }
 
@@ -255,17 +260,6 @@ static LocalFilesConfig loadLocalFilesJson(const json& j) {
     const auto& lfj = j["local_files"];
     lf.base_path = lfj.value("base_path", lf.base_path);
     return lf;
-}
-
-static MulticastReplyConfig loadMulticastReplyJson(const json& j) {
-    MulticastReplyConfig mr;
-    if (!j.contains("multicast_reply") || !j["multicast_reply"].is_object()) return mr;
-    const auto& mrj = j["multicast_reply"];
-    mr.group = mrj.value("group", mr.group);
-    mr.port  = static_cast<uint16_t>(mrj.value("port", static_cast<int>(mr.port)));
-    mr.ttl   = static_cast<uint8_t>(mrj.value("ttl",  static_cast<int>(mr.ttl)));
-    mr.iface = mrj.value("interface", mr.iface);
-    return mr;
 }
 
 static TimeoutConfig loadTimeoutsJson(const json& j) {
@@ -294,12 +288,11 @@ ClientConfig loadClientConfig(const std::string& path) {
     }
 
     ClientConfig c;
-    c.global          = loadGlobal(j);
-    c.multicast       = loadMulticastJson(j);
-    c.multicast_reply = loadMulticastReplyJson(j);
-    c.s3              = loadS3Json(j);
-    c.local_files     = loadLocalFilesJson(j);
-    c.timeouts        = loadTimeoutsJson(j);
+    c.global      = loadGlobal(j);
+    c.multicast   = loadMulticastJson(j);
+    c.s3          = loadS3Json(j);
+    c.local_files = loadLocalFilesJson(j);
+    c.timeouts    = loadTimeoutsJson(j);
     if (j.contains("node") && j["node"].is_object())
         c.node_id = j["node"].value("id", c.node_id);
     return c;
@@ -316,14 +309,16 @@ ServerConfig loadServerConfig(const std::string& path) {
     }
 
     ServerConfig s;
-    s.global          = loadGlobal(j);
-    s.multicast       = loadMulticastJson(j);
-    s.multicast_reply = loadMulticastReplyJson(j);
-    s.s3              = loadS3Json(j);
-    s.local_files     = loadLocalFilesJson(j);
-    s.timeouts        = loadTimeoutsJson(j);
+    s.global      = loadGlobal(j);
+    s.multicast   = loadMulticastJson(j);
+    s.s3          = loadS3Json(j);
+    s.local_files = loadLocalFilesJson(j);
+    s.timeouts    = loadTimeoutsJson(j);
     if (j.contains("node") && j["node"].is_object())
         s.node_id = j["node"].value("id", s.node_id);
+    if (j.contains("server") && j["server"].is_object())
+        s.bypass_pending_check =
+            j["server"].value("bypass_pending_check", s.bypass_pending_check);
     return s;
 }
 

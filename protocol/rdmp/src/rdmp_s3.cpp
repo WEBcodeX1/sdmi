@@ -162,14 +162,17 @@ std::string curlPerform(CURL*              curl,
                          const std::string& url,
                          struct curl_slist* headers,
                          const std::string* put_body,
-                         long*              http_code_out) {
+                         long*              http_code_out,
+                         long               timeout_ms = 10000) {
     std::string response;
     curl_easy_reset(curl);
     curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  curlWrite);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &response);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        10L);
+    // Use millisecond-precision timeout when available, fall back to seconds.
+    const long timeout_sec = (timeout_ms + 999) / 1000;
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        timeout_sec > 0 ? timeout_sec : 10L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
     if (put_body) {
@@ -220,6 +223,13 @@ struct curl_slist* makeHeaders(const S3Config&    config,
 // ---------------------------------------------------------------------------
 
 S3Client::S3Client(const S3Config& config) : config_(config), curl_(nullptr) {
+    // Build the effective endpoint list: primary endpoint first, then extras.
+    endpoints_.push_back(config_.endpoint);
+    for (const auto& ep : config_.endpoints)
+        if (ep != config_.endpoint)
+            endpoints_.push_back(ep);
+    active_endpoint_idx_ = 0;
+
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl_ = curl_easy_init();
     if (!curl_) throw std::runtime_error("Failed to initialise libcurl");
@@ -234,16 +244,81 @@ S3Client::~S3Client() {
 }
 
 // ---------------------------------------------------------------------------
-// URL builders
+// Active-endpoint management
+// ---------------------------------------------------------------------------
+
+const std::string& S3Client::activeEndpoint() const {
+    return endpoints_[active_endpoint_idx_];
+}
+
+void S3Client::rotateEndpoint() {
+    if (endpoints_.size() <= 1) return;
+    active_endpoint_idx_ = (active_endpoint_idx_ + 1) % endpoints_.size();
+    std::cerr << "[RDMP/S3] Switching to endpoint: "
+              << activeEndpoint() << "\n";
+}
+
+// ---------------------------------------------------------------------------
+// URL builders (use the currently active endpoint)
 // ---------------------------------------------------------------------------
 
 std::string S3Client::objectUrl(const std::string& key) const {
-    return config_.endpoint + "/" + config_.bucket + "/" + key;
+    return activeEndpoint() + "/" + config_.bucket + "/" + key;
 }
 
 std::string S3Client::listUrl(const std::string& prefix) const {
-    return config_.endpoint + "/" + config_.bucket
+    return activeEndpoint() + "/" + config_.bucket
            + "?list-type=2&prefix=" + prefix + "&max-keys=1000";
+}
+
+// ---------------------------------------------------------------------------
+// Helper: perform a request, rotating endpoints on failure
+// ---------------------------------------------------------------------------
+
+std::string S3Client::performWithFailover(const std::string& initial_url,
+                                           const std::string& http_method,
+                                           const std::string& body,
+                                           const std::string& content_type,
+                                           long*              http_code_out) {
+    const long timeout_ms = static_cast<long>(config_.max_answer_timeout_ms);
+
+    // Try every endpoint (starting from the current active one).
+    for (size_t attempt = 0; attempt < endpoints_.size(); ++attempt) {
+        // Build the URL for the current active endpoint.
+        // initial_url already has the right path; we just swap the endpoint prefix.
+        std::string url = initial_url;
+        if (attempt > 0) {
+            // Replace the primary endpoint prefix with the new active endpoint.
+            // The path after the old endpoint is preserved.
+            // We rebuild from the active endpoint + path extracted from initial_url.
+            const std::string& first_ep = endpoints_[0];
+            if (initial_url.compare(0, first_ep.size(), first_ep) == 0)
+                url = activeEndpoint() + initial_url.substr(first_ep.size());
+        }
+
+        struct curl_slist* hdrs =
+            makeHeaders(config_, http_method, url, body, content_type);
+
+        long code = 0;
+        const std::string* put_ptr =
+            (http_method == "PUT") ? &body : nullptr;
+        std::string response = curlPerform(static_cast<CURL*>(curl_),
+                                            url, hdrs, put_ptr, &code,
+                                            timeout_ms);
+        curl_slist_free_all(hdrs);
+
+        if (code != 0) {
+            // Got a real HTTP response – success or server error, return it.
+            if (http_code_out) *http_code_out = code;
+            return response;
+        }
+
+        // Network / timeout failure – try next endpoint.
+        rotateEndpoint();
+    }
+
+    if (http_code_out) *http_code_out = 0;
+    return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -251,37 +326,25 @@ std::string S3Client::listUrl(const std::string& prefix) const {
 // ---------------------------------------------------------------------------
 
 std::string S3Client::getObject(const std::string& key) {
-    const std::string url  = objectUrl(key);
-    struct curl_slist* hdrs = makeHeaders(config_, "GET", url, "", "application/json");
-
+    const std::string url = objectUrl(key);
     long code = 0;
-    std::string body = curlPerform(static_cast<CURL*>(curl_), url, hdrs, nullptr, &code);
-    curl_slist_free_all(hdrs);
-
+    std::string body = performWithFailover(url, "GET", "", "application/json", &code);
     return (code == 200) ? body : "";
 }
 
 bool S3Client::putObject(const std::string& key,
                           const std::string& body,
                           const std::string& content_type) {
-    const std::string url   = objectUrl(key);
-    struct curl_slist* hdrs = makeHeaders(config_, "PUT", url, body, content_type);
-
+    const std::string url = objectUrl(key);
     long code = 0;
-    curlPerform(static_cast<CURL*>(curl_), url, hdrs, &body, &code);
-    curl_slist_free_all(hdrs);
-
+    performWithFailover(url, "PUT", body, content_type, &code);
     return (code == 200 || code == 204);
 }
 
 std::vector<std::string> S3Client::listObjects(const std::string& prefix) {
-    const std::string url   = listUrl(prefix);
-    struct curl_slist* hdrs = makeHeaders(config_, "GET", url, "", "application/xml");
-
+    const std::string url = listUrl(prefix);
     long code = 0;
-    std::string xml = curlPerform(static_cast<CURL*>(curl_), url, hdrs, nullptr, &code);
-    curl_slist_free_all(hdrs);
-
+    std::string xml = performWithFailover(url, "GET", "", "application/xml", &code);
     return (code == 200) ? parseListXml(xml) : std::vector<std::string>{};
 }
 

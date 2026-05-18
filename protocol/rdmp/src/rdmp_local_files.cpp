@@ -80,29 +80,32 @@ bool LocalFilesBackend::putObject(const std::string& key,
 }
 
 std::vector<std::string> LocalFilesBackend::listObjects(const std::string& prefix) {
-    // Determine which sub-directory to list based on prefix.
-    // prefix is typically "tasks/" or "status/"
+    // S3 listObjects with a prefix returns ALL objects whose key starts with
+    // the prefix, regardless of nesting depth.  Mirror this by recursively
+    // walking the directory tree rooted at the prefix directory.
     const std::string dir_path = resolvePath(prefix.empty() ? "" : prefix);
 
     std::vector<std::string> keys;
 
-    // Strip trailing slash from dir_path for the directory scan
+    // Strip trailing slash from dir_path for the directory scan.
     std::string scan_dir = dir_path;
     while (!scan_dir.empty() && scan_dir.back() == '/') scan_dir.pop_back();
 
     std::error_code ec;
     if (!fs::exists(scan_dir, ec) || !fs::is_directory(scan_dir, ec)) return keys;
 
-    for (const auto& entry : fs::directory_iterator(scan_dir, ec)) {
+    // Recursive walk
+    for (const auto& entry : fs::recursive_directory_iterator(scan_dir, ec)) {
         if (!entry.is_regular_file()) continue;
         // Skip temp files
         const std::string fname = entry.path().filename().string();
         if (fname.size() > 4 && fname.substr(fname.size() - 4) == ".tmp") continue;
 
-        // Reconstruct the logical key (relative to base_path_)
-        std::string rel = prefix;
-        if (!rel.empty() && rel.back() != '/') rel += '/';
-        rel += fname;
+        // Reconstruct the logical key relative to base_path_
+        // entry.path() is an absolute path under base_path_/prefix/…
+        const std::string full = entry.path().string();
+        if (full.size() <= base_path_.size() + 1) continue;
+        std::string rel = full.substr(base_path_.size() + 1); // strip base_path_/
         keys.push_back(rel);
     }
     return keys;

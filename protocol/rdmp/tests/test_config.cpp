@@ -3,8 +3,9 @@
 // Tests cover:
 //  - Valid client and server config files
 //  - Default values when optional fields are absent
-//  - The global.synctype field ("s3", "local-files", "multicast-reply")
-//  - multicast_reply section parsing
+//  - The global.synctype field ("s3", "local-files")
+//  - Multiple S3 endpoints and max_answer_timeout_ms
+//  - Server bypass_pending_check option
 //  - Error handling for missing / malformed files
 
 #define BOOST_TEST_MODULE RdmpTests
@@ -49,18 +50,14 @@ BOOST_AUTO_TEST_CASE(ClientFullConfig) {
             "ttl": 16,
             "interface": "eth1"
         },
-        "multicast_reply": {
-            "group": "239.9.9.10",
-            "port": 6001,
-            "ttl": 8,
-            "interface": "eth1"
-        },
         "s3": {
             "endpoint": "http://mys3:9000",
             "bucket": "my-bucket",
             "access_key": "AKID",
             "secret_key": "SECRET",
-            "region": "eu-west-1"
+            "region": "eu-west-1",
+            "max_answer_timeout_ms": 3000,
+            "endpoints": ["http://mys3a:9000", "http://mys3b:9000"]
         },
         "local_files": {
             "base_path": "/var/rdmp"
@@ -86,15 +83,15 @@ BOOST_AUTO_TEST_CASE(ClientFullConfig) {
     BOOST_CHECK_EQUAL(cfg.multicast.port,  6000);
     BOOST_CHECK_EQUAL(cfg.multicast.ttl,   16);
     BOOST_CHECK_EQUAL(cfg.multicast.iface, "eth1");
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.group, "239.9.9.10");
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.port,  6001);
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.ttl,   8);
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.iface, "eth1");
     BOOST_CHECK_EQUAL(cfg.s3.endpoint,     "http://mys3:9000");
     BOOST_CHECK_EQUAL(cfg.s3.bucket,       "my-bucket");
     BOOST_CHECK_EQUAL(cfg.s3.access_key,   "AKID");
     BOOST_CHECK_EQUAL(cfg.s3.secret_key,   "SECRET");
     BOOST_CHECK_EQUAL(cfg.s3.region,       "eu-west-1");
+    BOOST_CHECK_EQUAL(cfg.s3.max_answer_timeout_ms, 3000u);
+    BOOST_CHECK_EQUAL(cfg.s3.endpoints.size(), 2u);
+    BOOST_CHECK_EQUAL(cfg.s3.endpoints[0], "http://mys3a:9000");
+    BOOST_CHECK_EQUAL(cfg.s3.endpoints[1], "http://mys3b:9000");
     BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/var/rdmp");
     BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,        1000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,       500u);
@@ -127,33 +124,6 @@ BOOST_AUTO_TEST_CASE(ClientLocalFilesSynctype) {
 }
 
 // ---------------------------------------------------------------------------
-// Client config – multicast-reply synctype
-// ---------------------------------------------------------------------------
-
-BOOST_AUTO_TEST_CASE(ClientMulticastReplySynctype) {
-    const std::string json = R"({
-        "global": { "synctype": "multicast-reply" },
-        "multicast_reply": {
-            "group": "239.2.3.4",
-            "port": 5002,
-            "ttl": 16,
-            "interface": ""
-        },
-        "node": { "id": "mr-client" }
-    })";
-
-    const std::string path = writeTmpJson(json);
-    const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
-    std::remove(path.c_str());
-
-    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::MulticastReply);
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.group, "239.2.3.4");
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.port,  5002u);
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.ttl,   16u);
-    BOOST_CHECK_EQUAL(cfg.node_id, "mr-client");
-}
-
-// ---------------------------------------------------------------------------
 // Client config – defaults when optional sections are absent
 // ---------------------------------------------------------------------------
 
@@ -169,12 +139,10 @@ BOOST_AUTO_TEST_CASE(ClientDefaults) {
     BOOST_CHECK_EQUAL(cfg.multicast.port,  5000u);
     BOOST_CHECK_EQUAL(cfg.multicast.ttl,   32u);
     BOOST_CHECK_EQUAL(cfg.multicast.iface, "");
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.group, "239.1.2.4");
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.port,  5001u);
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.ttl,   32u);
-    BOOST_CHECK_EQUAL(cfg.multicast_reply.iface, "");
     BOOST_CHECK_EQUAL(cfg.s3.endpoint,     "http://localhost:9000");
     BOOST_CHECK_EQUAL(cfg.s3.bucket,       "rdmp-tasks");
+    BOOST_CHECK_EQUAL(cfg.s3.max_answer_timeout_ms, 10000u);
+    BOOST_CHECK(cfg.s3.endpoints.empty());
     BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/tmp/rdmp-tasks");
     BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,        5000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,      1000u);
@@ -197,7 +165,8 @@ BOOST_AUTO_TEST_CASE(ServerFullConfig) {
         "s3": { "endpoint": "http://s3:9000", "bucket": "b", "access_key": "", "secret_key": "", "region": "us-east-1" },
         "local_files": { "base_path": "/srv/rdmp" },
         "timeouts": { "task_execution_ms": 2000, "s3_poll_interval_ms": 250 },
-        "node": { "id": "myserver" }
+        "node": { "id": "myserver" },
+        "server": { "bypass_pending_check": true }
     })";
 
     const std::string path = writeTmpJson(json);
@@ -213,6 +182,19 @@ BOOST_AUTO_TEST_CASE(ServerFullConfig) {
     // Unset fields use defaults
     BOOST_CHECK_EQUAL(cfg.timeouts.retry_delay_ms, 3000u);
     BOOST_CHECK_EQUAL(cfg.node_id, "myserver");
+    BOOST_CHECK_EQUAL(cfg.bypass_pending_check, true);
+}
+
+// ---------------------------------------------------------------------------
+// Server config – bypass_pending_check defaults to false
+// ---------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(ServerBypassPendingCheckDefault) {
+    const std::string json = R"({ "node": { "id": "srv1" } })";
+    const std::string path = writeTmpJson(json);
+    const rdmp::ServerConfig cfg = rdmp::loadServerConfig(path);
+    std::remove(path.c_str());
+    BOOST_CHECK_EQUAL(cfg.bypass_pending_check, false);
 }
 
 // ---------------------------------------------------------------------------
