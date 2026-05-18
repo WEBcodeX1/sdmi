@@ -13,7 +13,6 @@ The canonical use case in the SDMI context is issuing scale-up / scale-down comm
 | 100% reliable delivery | Each client bursts N UDP datagrams; multiple independent clients relay the same task |
 | Best-effort single execution (normal mode) | S3 optimistic claim: PUT "executing" → re-read to verify server_id ownership; duplicate execution possible under network failures |
 | All-servers execution (bypass mode) | `bypass_pending_check=true` skips the S3 check; every server executes independently |
-| Crash / lost-packet recovery | Watchdog detects stale "executing" tasks and re-claims them |
 | No single point of failure | All state lives in the shared S3 bucket; any node can recover any task |
 | Idempotency responsibility | Task handlers **must** check the task UUID to guard against re-execution caused by delayed/duplicate announces |
 
