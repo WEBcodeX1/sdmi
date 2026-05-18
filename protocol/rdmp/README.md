@@ -2,9 +2,9 @@
 
 ## What RDMP Does
 
-RDMP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed on **exactly one** server endpoint – or, in bypass mode, on every server endpoint.
+RDMP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed **on at least one** server endpoint – or, in bypass mode, on every server endpoint.
 
-The canonical use case in the SDMI context is issuing scale-up / scale-down commands to a fleet of infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to ensure the command runs exactly once (or on all nodes in bypass mode).
+The canonical use case in the SDMI context is issuing scale-up / scale-down commands to a fleet of infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss, delayed retransmission, split-brain S3 access) a task **may still be executed by more than one server**; the task handler must therefore be idempotent and **check the task UUID** to guard against unintended re-execution.
 
 ### How a task flows through the system
 
@@ -34,10 +34,11 @@ The canonical use case in the SDMI context is issuing scale-up / scale-down comm
 | Property | Mechanism |
 |---|---|
 | 100% reliable delivery | Each client bursts N UDP datagrams; multiple independent clients relay the same task |
-| Exactly-once execution (normal mode) | S3 optimistic claim: PUT "executing" → re-read to verify server_id ownership |
+| Best-effort single execution (normal mode) | S3 optimistic claim: PUT "executing" → re-read to verify server_id ownership; duplicate execution possible under network failures |
 | All-servers execution (bypass mode) | `bypass_pending_check=true` skips the S3 check; every server executes independently |
 | Crash / lost-packet recovery | Watchdog detects stale "executing" tasks and re-claims them |
 | No single point of failure | All state lives in the shared S3 bucket; any node can recover any task |
+| Idempotency responsibility | Task handlers **must** check the task UUID to guard against re-execution caused by delayed/duplicate announces |
 
 ---
 
@@ -86,7 +87,11 @@ Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
        `status=executing, server_id=<self>` to S3, re-reads to verify ownership
        (optimistic last-write-wins concurrency). If ownership confirmed: execute.
      - On completion: writes `status=completed` (or `failed`) to `status/<uuid>`.
-     - Result: **1 status object** per task in the bucket.
+     - Result: **1 status object** per task in the bucket under normal conditions.
+        Under adverse network conditions (delayed duplicate announces, S3 write
+        races, or watchdog re-claim after a transient failure) **more than one
+        server may execute the same task**. Task handlers **must** be idempotent
+        and check the task UUID at the endpoint to prevent unintended re-execution.
 
      **Bypass mode (`bypass_pending_check = true`):**
      - Skips the S3 status check entirely. Every server that receives the
@@ -312,7 +317,7 @@ Both binaries accept a single argument: the path to a **JSON** config file.
 | `timeouts`  | `multicast_repeat_count`       | Number of UDP sends per task burst                       |
 | `timeouts`  | `multicast_repeat_interval_ms` | Interval (ms) between burst datagrams                    |
 | `node`      | `id`                           | Unique node identifier                                   |
-| `server`    | `bypass_pending_check`         | `false` (default): exactly-once; `true`: all-servers execute |
+| `server`    | `bypass_pending_check`         | `false` (default): best-effort single execution; `true`: all-servers execute |
 
 ### Multiple S3 endpoints
 
@@ -465,7 +470,7 @@ The end-to-end tests specifically cover:
 | Property                  | Mechanism                                                         |
 |---------------------------|-------------------------------------------------------------------|
 | At-least-once delivery    | Each client bursts N UDP datagrams; multiple clients relay        |
-| Exactly-once execution    | Backend optimistic claim (PUT → GET verify)                       |
+| Best-effort single execution | Backend optimistic claim (PUT → GET verify); duplicate execution possible under network failures – task handlers must check UUID |
 | All-servers execution     | `bypass_pending_check=true` skips the claim race                  |
 | Crash recovery            | Watchdog re-claims stale EXECUTING tasks after timeout            |
 | Degraded controller alert | Per-source receipt-time comparison on servers                     |
