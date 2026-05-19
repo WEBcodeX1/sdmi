@@ -37,7 +37,7 @@ The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-
 
 ![OrchestratorUpscaleNode2](/diagram/SDMI-Orchestrator-Example-Upscale-Node2.png)
 
-> [NOTE!]
+> [!NOTE]
 > Note that the monitoring nodes shold be responsible for task-re-execution on task failure, **not** the RDMP protocol for a strict layer seperation.
 
 ### Client (MSG Distributor Client)
