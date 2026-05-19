@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace rdmp {
+namespace rmdp {
 
 // Forward declarations to avoid circular headers
 struct ClientConfig;
@@ -47,4 +47,4 @@ public:
 std::unique_ptr<IStorageBackend> makeStorageBackend(const ClientConfig& cfg);
 std::unique_ptr<IStorageBackend> makeStorageBackend(const ServerConfig& cfg);
 
-} // namespace rdmp
+} // namespace rmdp

@@ -6,18 +6,18 @@
 #include <string>
 #include <vector>
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
 // Protocol wire-format constants
 // ---------------------------------------------------------------------------
 
-static constexpr uint32_t RDMP_MAGIC   = 0x52444D50u; // 'R','D','M','P'
-static constexpr uint8_t  RDMP_VERSION = 0x01u;
+static constexpr uint32_t RMDP_MAGIC   = 0x524D4450u; // 'R','M','D','P'
+static constexpr uint8_t  RMDP_VERSION = 0x01u;
 
-// Minimum size of a valid RDMP UDP datagram:
+// Minimum size of a valid RMDP UDP datagram:
 //   4 (magic) + 1 (version) + 1 (msg_type) + 36 (uuid) + 4 (payload_len) = 46
-static constexpr size_t RDMP_HEADER_SIZE = 46u;
+static constexpr size_t RMDP_HEADER_SIZE = 46u;
 
 // ---------------------------------------------------------------------------
 // Message types (1 byte in wire format)
@@ -67,14 +67,14 @@ struct S3Config {
     std::vector<std::string> endpoints;
     // Per-request timeout in milliseconds (0 = library default ~10 s).
     uint32_t                 max_answer_timeout_ms = 10000;
-    std::string              bucket     = "rdmp-tasks";
+    std::string              bucket     = "rmdp-tasks";
     std::string              access_key = "";
     std::string              secret_key = "";
     std::string              region     = "us-east-1";
 };
 
 struct LocalFilesConfig {
-    std::string base_path = "/tmp/rdmp-tasks";
+    std::string base_path = "/tmp/rmdp-tasks";
 };
 
 struct TimeoutConfig {
@@ -176,4 +176,4 @@ inline std::ostream& operator<<(std::ostream& os, MsgType m) {
 ClientConfig loadClientConfig(const std::string& path);
 ServerConfig loadServerConfig(const std::string& path);
 
-} // namespace rdmp
+} // namespace rmdp

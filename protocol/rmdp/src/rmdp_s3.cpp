@@ -1,4 +1,4 @@
-#include "rdmp_s3.hpp"
+#include "rmdp_s3.hpp"
 
 #include <cstring>
 #include <ctime>
@@ -12,7 +12,7 @@
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 
-namespace rdmp {
+namespace rmdp {
 namespace {
 
 // ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ std::string curlPerform(CURL*              curl,
 
     CURLcode rc = curl_easy_perform(curl);
     if (rc != CURLE_OK) {
-        std::cerr << "[RDMP/S3] curl error: " << curl_easy_strerror(rc) << "\n";
+        std::cerr << "[RMDP/S3] curl error: " << curl_easy_strerror(rc) << "\n";
         if (http_code_out) *http_code_out = 0;
         return "";
     }
@@ -254,7 +254,7 @@ const std::string& S3Client::activeEndpoint() const {
 void S3Client::rotateEndpoint() {
     if (endpoints_.size() <= 1) return;
     active_endpoint_idx_ = (active_endpoint_idx_ + 1) % endpoints_.size();
-    std::cerr << "[RDMP/S3] Switching to endpoint: "
+    std::cerr << "[RMDP/S3] Switching to endpoint: "
               << activeEndpoint() << "\n";
 }
 
@@ -365,13 +365,13 @@ std::vector<std::string> S3Client::parseListXml(const std::string& xml) {
 
 // Expose static helpers (required by the header declaration).
 std::string S3Client::sha256hex(const std::string& d) {
-    return rdmp::sha256hex(d);
+    return rmdp::sha256hex(d);
 }
 std::string S3Client::hmacSha256raw(const std::string& k, const std::string& m) {
-    return rdmp::hmacSha256raw(k, m);
+    return rmdp::hmacSha256raw(k, m);
 }
 std::string S3Client::hmacSha256hex(const std::string& k, const std::string& m) {
-    return rdmp::hmacSha256hex(k, m);
+    return rmdp::hmacSha256hex(k, m);
 }
 std::string S3Client::buildAuthHeader(const std::string& method,
                                       const std::string& uri,
@@ -384,4 +384,4 @@ std::string S3Client::buildAuthHeader(const std::string& method,
     return buildAWSAuth(config_, method, url, body, datetime_str, date_str);
 }
 
-} // namespace rdmp
+} // namespace rmdp

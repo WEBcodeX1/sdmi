@@ -1,4 +1,4 @@
-#include "rdmp_server.hpp"
+#include "rmdp_server.hpp"
 
 #include <csignal>
 #include <cstdlib>
@@ -9,7 +9,7 @@
 // Signal handling
 // ---------------------------------------------------------------------------
 
-static rdmp::RDMPServer* g_server = nullptr;
+static rmdp::RMDPServer* g_server = nullptr;
 
 static void signalHandler(int /*sig*/) {
     if (g_server) g_server->stop();
@@ -22,7 +22,7 @@ static void signalHandler(int /*sig*/) {
 
 static std::string defaultHandler(const std::string& uuid,
                                   const std::string& payload) {
-    std::cout << "[RDMP/Server] Executing task " << uuid
+    std::cout << "[RMDP/Server] Executing task " << uuid
               << "  payload=" << payload << "\n";
     return "ok";
 }
@@ -33,7 +33,7 @@ static std::string defaultHandler(const std::string& uuid,
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: rdmp_server <config-file>\n"
+        std::cerr << "Usage: rmdp_server <config-file>\n"
                   << "\n"
                   << "  config-file  Path to the INI-style server configuration file.\n";
         return EXIT_FAILURE;
@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
     const std::string config_path = argv[1];
 
     try {
-        rdmp::RDMPServer server(config_path);
+        rmdp::RMDPServer server(config_path);
         g_server = &server;
 
         std::signal(SIGINT,  signalHandler);
@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
 
         server.setTaskHandler(defaultHandler);
 
-        std::cout << "RDMP server started. Press Ctrl-C to stop.\n";
+        std::cout << "RMDP server started. Press Ctrl-C to stop.\n";
         server.run();
     } catch (const std::exception& ex) {
         std::cerr << "Fatal: " << ex.what() << "\n";

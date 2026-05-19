@@ -1,4 +1,4 @@
-#include "rdmp_common.hpp"
+#include "rmdp_common.hpp"
 #include "nlohmann/json.hpp"
 
 #include <algorithm>
@@ -12,7 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
 // Task status string conversion
@@ -320,4 +320,4 @@ ServerConfig loadServerConfig(const std::string& path) {
     return s;
 }
 
-} // namespace rdmp
+} // namespace rmdp

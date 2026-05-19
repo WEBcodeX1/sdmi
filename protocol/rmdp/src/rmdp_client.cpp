@@ -1,4 +1,4 @@
-#include "rdmp_client.hpp"
+#include "rmdp_client.hpp"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
 // Storage key prefixes
@@ -23,14 +23,14 @@ static const std::string S3_STATUS_PREFIX = "status/";
 // Constructor / destructor
 // ---------------------------------------------------------------------------
 
-RDMPClient::RDMPClient(const std::string& config_path)
+RMDPClient::RMDPClient(const std::string& config_path)
     : config_(loadClientConfig(config_path)),
       backend_(makeStorageBackend(config_)) {
     setupSocket();
     last_s3_poll_ms_ = currentTimeMs();
 }
 
-RDMPClient::~RDMPClient() {
+RMDPClient::~RMDPClient() {
     if (sock_fd_ >= 0) {
         close(sock_fd_);
         sock_fd_ = -1;
@@ -41,7 +41,7 @@ RDMPClient::~RDMPClient() {
 // UDP multicast socket (send-only)
 // ---------------------------------------------------------------------------
 
-void RDMPClient::setupSocket() {
+void RMDPClient::setupSocket() {
     sock_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd_ < 0)
         throw std::runtime_error(std::string("socket() failed: ") + strerror(errno));
@@ -69,19 +69,19 @@ void RDMPClient::setupSocket() {
 // Wire-format serialisation
 // ---------------------------------------------------------------------------
 
-void RDMPClient::sendMulticast(const std::string& uuid,
+void RMDPClient::sendMulticast(const std::string& uuid,
                                 MsgType            type,
                                 const std::string& payload) {
     // Build datagram:
     //   4B magic | 1B version | 1B msg_type | 36B uuid | 4B payload_len | NB payload
-    const uint32_t magic   = htonl(RDMP_MAGIC);
+    const uint32_t magic   = htonl(RMDP_MAGIC);
     const uint32_t pay_len = htonl(static_cast<uint32_t>(payload.size()));
 
     // Pre-allocate buffer (max UDP payload is ~65507 B)
     std::string buf;
-    buf.reserve(RDMP_HEADER_SIZE + payload.size());
+    buf.reserve(RMDP_HEADER_SIZE + payload.size());
     buf.append(reinterpret_cast<const char*>(&magic),   4);
-    buf.push_back(static_cast<char>(RDMP_VERSION));
+    buf.push_back(static_cast<char>(RMDP_VERSION));
     buf.push_back(static_cast<char>(type));
     if (uuid.size() != 36)
         throw std::runtime_error("UUID must be 36 characters");
@@ -94,14 +94,14 @@ void RDMPClient::sendMulticast(const std::string& uuid,
                           reinterpret_cast<const struct sockaddr*>(&mcast_addr_),
                           sizeof(mcast_addr_));
     if (sent < 0)
-        std::cerr << "[RDMP/Client] sendto error: " << strerror(errno) << "\n";
+        std::cerr << "[RMDP/Client] sendto error: " << strerror(errno) << "\n";
 }
 
 // ---------------------------------------------------------------------------
 // Burst queue management
 // ---------------------------------------------------------------------------
 
-void RDMPClient::enqueueBurst(const std::string& uuid,
+void RMDPClient::enqueueBurst(const std::string& uuid,
                                const std::string& payload) {
     PendingMulticast pm;
     pm.uuid            = uuid;
@@ -111,7 +111,7 @@ void RDMPClient::enqueueBurst(const std::string& uuid,
     pending_multicasts_.push_back(std::move(pm));
 }
 
-void RDMPClient::drainBurstQueue() {
+void RMDPClient::drainBurstQueue() {
     const int64_t now = currentTimeMs();
 
     for (auto it = pending_multicasts_.begin(); it != pending_multicasts_.end(); ) {
@@ -137,7 +137,7 @@ void RDMPClient::drainBurstQueue() {
 // S3 persistence
 // ---------------------------------------------------------------------------
 
-bool RDMPClient::storeTask(const std::string& uuid,
+bool RMDPClient::storeTask(const std::string& uuid,
                             const std::string& payload) {
     Task t;
     t.uuid       = uuid;
@@ -154,7 +154,7 @@ bool RDMPClient::storeTask(const std::string& uuid,
 // S3 polling – detect tasks added by other client instances
 // ---------------------------------------------------------------------------
 
-void RDMPClient::pollS3ForNewTasks() {
+void RMDPClient::pollS3ForNewTasks() {
     const int64_t now = currentTimeMs();
     if (now - last_s3_poll_ms_ <
         static_cast<int64_t>(config_.timeouts.s3_poll_interval_ms)) {
@@ -179,7 +179,7 @@ void RDMPClient::pollS3ForNewTasks() {
 
         known_tasks_.insert(uuid);
         enqueueBurst(uuid, t.payload);
-        std::cout << "[RDMP/Client] Relaying task from S3: " << uuid << "\n";
+        std::cout << "[RMDP/Client] Relaying task from S3: " << uuid << "\n";
     }
 }
 
@@ -187,32 +187,32 @@ void RDMPClient::pollS3ForNewTasks() {
 // Public API
 // ---------------------------------------------------------------------------
 
-std::string RDMPClient::addNewTask(const std::string& payload) {
+std::string RMDPClient::addNewTask(const std::string& payload) {
     const std::string uuid = generateUUID();
 
     if (!storeTask(uuid, payload)) {
-        std::cerr << "[RDMP/Client] Failed to store task " << uuid
+        std::cerr << "[RMDP/Client] Failed to store task " << uuid
                   << " in S3\n";
         return "";
     }
 
     known_tasks_.insert(uuid);
     enqueueBurst(uuid, payload);
-    std::cout << "[RDMP/Client] New task queued: " << uuid << "\n";
+    std::cout << "[RMDP/Client] New task queued: " << uuid << "\n";
     return uuid;
 }
 
-std::string RDMPClient::addNewMessage(const std::string& payload) {
+std::string RMDPClient::addNewMessage(const std::string& payload) {
     return addNewTask(payload);
 }
 
-void RDMPClient::runOnce() {
+void RMDPClient::runOnce() {
     backend_->sync();
     drainBurstQueue();
     pollS3ForNewTasks();
 }
 
-void RDMPClient::run() {
+void RMDPClient::run() {
     running_ = true;
     while (running_) {
         runOnce();
@@ -221,8 +221,8 @@ void RDMPClient::run() {
     }
 }
 
-void RDMPClient::stop() {
+void RMDPClient::stop() {
     running_ = false;
 }
 
-} // namespace rdmp
+} // namespace rmdp

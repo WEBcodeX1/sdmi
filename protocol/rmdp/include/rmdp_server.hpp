@@ -1,7 +1,7 @@
 #pragma once
 
-#include "rdmp_backend.hpp"
-#include "rdmp_common.hpp"
+#include "rmdp_backend.hpp"
+#include "rmdp_common.hpp"
 
 #include <functional>
 #include <memory>
@@ -10,7 +10,7 @@
 
 #include <netinet/in.h>
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
 // TaskHandler
@@ -35,9 +35,9 @@ struct ExecutingTask {
 };
 
 // ---------------------------------------------------------------------------
-// RDMPServer
+// RMDPServer
 //
-// Single-threaded RDMP server (MSG distributor server).
+// Single-threaded RMDP server (MSG distributor server).
 //
 // Workflow
 // --------
@@ -50,10 +50,10 @@ struct ExecutingTask {
 //          registered TaskHandler.
 // ---------------------------------------------------------------------------
 
-class RDMPServer {
+class RMDPServer {
 public:
-    explicit RDMPServer(const std::string& config_path);
-    ~RDMPServer();
+    explicit RMDPServer(const std::string& config_path);
+    ~RMDPServer();
 
     // Register the application task handler.
     void setTaskHandler(TaskHandler handler);
@@ -113,4 +113,4 @@ private:
                           const std::string& result    = "");
 };
 
-} // namespace rdmp
+} // namespace rmdp

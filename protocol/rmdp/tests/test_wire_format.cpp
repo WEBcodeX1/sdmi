@@ -1,12 +1,12 @@
-// test_wire_format.cpp – Unit tests for the RDMP UDP wire-format
+// test_wire_format.cpp – Unit tests for the RMDP UDP wire-format
 //
 // These tests validate the binary serialisation/deserialisation logic by
-// exercising the same byte layout that RDMPClient::sendMulticast() produces
-// and RDMPServer::receiveAndProcess() consumes.
+// exercising the same byte layout that RMDPClient::sendMulticast() produces
+// and RMDPServer::receiveAndProcess() consumes.
 
 #include <boost/test/unit_test.hpp>
 
-#include "rdmp_common.hpp"
+#include "rmdp_common.hpp"
 
 #include <arpa/inet.h>
 #include <cstring>
@@ -16,24 +16,24 @@
 namespace {
 
 // ---------------------------------------------------------------------------
-// Wire-format helpers (mirrors rdmp_client.cpp logic)
+// Wire-format helpers (mirrors rmdp_client.cpp logic)
 // ---------------------------------------------------------------------------
 
 std::vector<uint8_t> buildDatagram(const std::string& uuid,
-                                   rdmp::MsgType       type,
+                                   rmdp::MsgType       type,
                                    const std::string&  payload) {
-    const uint32_t magic   = htonl(rdmp::RDMP_MAGIC);
+    const uint32_t magic   = htonl(rmdp::RMDP_MAGIC);
     const uint32_t pay_len = htonl(static_cast<uint32_t>(payload.size()));
 
     std::vector<uint8_t> buf;
-    buf.reserve(rdmp::RDMP_HEADER_SIZE + payload.size());
+    buf.reserve(rmdp::RMDP_HEADER_SIZE + payload.size());
 
     // Magic (4 B)
     buf.insert(buf.end(),
                reinterpret_cast<const uint8_t*>(&magic),
                reinterpret_cast<const uint8_t*>(&magic) + 4);
     // Version (1 B)
-    buf.push_back(rdmp::RDMP_VERSION);
+    buf.push_back(rmdp::RMDP_VERSION);
     // Message type (1 B)
     buf.push_back(static_cast<uint8_t>(type));
     // UUID (36 B)
@@ -52,21 +52,21 @@ std::vector<uint8_t> buildDatagram(const std::string& uuid,
 struct ParsedDatagram {
     bool        valid       = false;
     uint8_t     version     = 0;
-    rdmp::MsgType msg_type  = rdmp::MsgType::TASK_ANNOUNCE;
+    rmdp::MsgType msg_type  = rmdp::MsgType::TASK_ANNOUNCE;
     std::string uuid;
     std::string payload;
 };
 
 ParsedDatagram parseDatagram(const std::vector<uint8_t>& buf) {
     ParsedDatagram d;
-    if (buf.size() < rdmp::RDMP_HEADER_SIZE) return d;
+    if (buf.size() < rmdp::RMDP_HEADER_SIZE) return d;
 
     uint32_t magic = 0;
     memcpy(&magic, buf.data(), 4);
-    if (ntohl(magic) != rdmp::RDMP_MAGIC) return d;
+    if (ntohl(magic) != rmdp::RMDP_MAGIC) return d;
 
     d.version  = buf[4];
-    d.msg_type = static_cast<rdmp::MsgType>(buf[5]);
+    d.msg_type = static_cast<rmdp::MsgType>(buf[5]);
 
     char uuid_buf[37] = {};
     memcpy(uuid_buf, buf.data() + 6, 36);
@@ -76,8 +76,8 @@ ParsedDatagram parseDatagram(const std::vector<uint8_t>& buf) {
     memcpy(&pay_len, buf.data() + 42, 4);
     pay_len = ntohl(pay_len);
 
-    if (buf.size() < rdmp::RDMP_HEADER_SIZE + pay_len) return d;
-    d.payload.assign(reinterpret_cast<const char*>(buf.data() + rdmp::RDMP_HEADER_SIZE),
+    if (buf.size() < rmdp::RMDP_HEADER_SIZE + pay_len) return d;
+    d.payload.assign(reinterpret_cast<const char*>(buf.data() + rmdp::RMDP_HEADER_SIZE),
                      pay_len);
     d.valid = true;
     return d;
@@ -89,33 +89,33 @@ BOOST_AUTO_TEST_SUITE(WireFormatTest)
 
 BOOST_AUTO_TEST_CASE(HeaderSizeConstant) {
     // Documented: 4+1+1+36+4 = 46
-    BOOST_CHECK_EQUAL(rdmp::RDMP_HEADER_SIZE, 46u);
+    BOOST_CHECK_EQUAL(rmdp::RMDP_HEADER_SIZE, 46u);
 }
 
 BOOST_AUTO_TEST_CASE(MagicConstant) {
     // 'R','D','M','P'
-    BOOST_CHECK_EQUAL(rdmp::RDMP_MAGIC, 0x52444D50u);
+    BOOST_CHECK_EQUAL(rmdp::RMDP_MAGIC, 0x524D4450u);
 }
 
 BOOST_AUTO_TEST_CASE(TaskAnnounceRoundTrip) {
-    const std::string uuid    = rdmp::generateUUID();
+    const std::string uuid    = rmdp::generateUUID();
     const std::string payload = "scale-out node-7";
 
-    auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, payload);
-    BOOST_REQUIRE_EQUAL(buf.size(), rdmp::RDMP_HEADER_SIZE + payload.size());
+    auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, payload);
+    BOOST_REQUIRE_EQUAL(buf.size(), rmdp::RMDP_HEADER_SIZE + payload.size());
 
     auto d = parseDatagram(buf);
     BOOST_CHECK(d.valid);
-    BOOST_CHECK_EQUAL(d.version,  rdmp::RDMP_VERSION);
-    BOOST_CHECK_EQUAL(d.msg_type, rdmp::MsgType::TASK_ANNOUNCE);
+    BOOST_CHECK_EQUAL(d.version,  rmdp::RMDP_VERSION);
+    BOOST_CHECK_EQUAL(d.msg_type, rmdp::MsgType::TASK_ANNOUNCE);
     BOOST_CHECK_EQUAL(d.uuid,     uuid);
     BOOST_CHECK_EQUAL(d.payload,  payload);
 }
 
 BOOST_AUTO_TEST_CASE(EmptyPayload) {
-    const std::string uuid = rdmp::generateUUID();
-    auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, "");
-    BOOST_CHECK_EQUAL(buf.size(), rdmp::RDMP_HEADER_SIZE);
+    const std::string uuid = rmdp::generateUUID();
+    auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, "");
+    BOOST_CHECK_EQUAL(buf.size(), rmdp::RMDP_HEADER_SIZE);
 
     auto d = parseDatagram(buf);
     BOOST_CHECK(d.valid);
@@ -123,10 +123,10 @@ BOOST_AUTO_TEST_CASE(EmptyPayload) {
 }
 
 BOOST_AUTO_TEST_CASE(LargePayload) {
-    const std::string uuid    = rdmp::generateUUID();
+    const std::string uuid    = rmdp::generateUUID();
     const std::string payload(4096, 'z');
 
-    auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, payload);
+    auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, payload);
     auto d   = parseDatagram(buf);
 
     BOOST_CHECK(d.valid);
@@ -134,15 +134,15 @@ BOOST_AUTO_TEST_CASE(LargePayload) {
 }
 
 BOOST_AUTO_TEST_CASE(TruncatedDatagram) {
-    // Shorter than RDMP_HEADER_SIZE
+    // Shorter than RMDP_HEADER_SIZE
     std::vector<uint8_t> short_buf(20, 0);
     auto d = parseDatagram(short_buf);
     BOOST_CHECK(!d.valid);
 }
 
 BOOST_AUTO_TEST_CASE(WrongMagic) {
-    const std::string uuid = rdmp::generateUUID();
-    auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, "test");
+    const std::string uuid = rmdp::generateUUID();
+    auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, "test");
     // Corrupt the magic number
     buf[0] = 0xFF;
     auto d = parseDatagram(buf);
@@ -150,8 +150,8 @@ BOOST_AUTO_TEST_CASE(WrongMagic) {
 }
 
 BOOST_AUTO_TEST_CASE(PayloadLengthOverflow) {
-    const std::string uuid = rdmp::generateUUID();
-    auto buf = buildDatagram(uuid, rdmp::MsgType::TASK_ANNOUNCE, "x");
+    const std::string uuid = rmdp::generateUUID();
+    auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, "x");
     // Set payload_len to something larger than the buffer
     uint32_t big = htonl(99999);
     memcpy(buf.data() + 42, &big, 4);

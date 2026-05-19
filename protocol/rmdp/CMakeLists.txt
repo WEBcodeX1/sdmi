@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(rdmp VERSION 1.0 LANGUAGES CXX)
+project(rmdp VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,47 +16,47 @@ find_package(OpenSSL REQUIRED)
 # Shared library: protocol core (common utilities + backends)
 # ---------------------------------------------------------------------------
 
-add_library(rdmp_core STATIC
-    src/rdmp_common.cpp
-    src/rdmp_s3.cpp
-    src/rdmp_local_files.cpp
-    src/rdmp_backend.cpp
+add_library(rmdp_core STATIC
+    src/rmdp_common.cpp
+    src/rmdp_s3.cpp
+    src/rmdp_local_files.cpp
+    src/rmdp_backend.cpp
 )
 
-# Position-independent code is required so rdmp_core can be linked into the
+# Position-independent code is required so rmdp_core can be linked into the
 # Python extension module (a shared library).
-set_target_properties(rdmp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(rmdp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_include_directories(rdmp_core PUBLIC include)
+target_include_directories(rmdp_core PUBLIC include)
 
-target_link_libraries(rdmp_core PUBLIC
+target_link_libraries(rmdp_core PUBLIC
     CURL::libcurl
     OpenSSL::Crypto
 )
 
 # ---------------------------------------------------------------------------
-# rdmp_client executable
+# rmdp_client executable
 # ---------------------------------------------------------------------------
 
-add_executable(rdmp_client
-    src/rdmp_client.cpp
-    src/rdmp_client_main.cpp
+add_executable(rmdp_client
+    src/rmdp_client.cpp
+    src/rmdp_client_main.cpp
 )
 
-target_include_directories(rdmp_client PRIVATE include)
-target_link_libraries(rdmp_client PRIVATE rdmp_core)
+target_include_directories(rmdp_client PRIVATE include)
+target_link_libraries(rmdp_client PRIVATE rmdp_core)
 
 # ---------------------------------------------------------------------------
-# rdmp_server executable
+# rmdp_server executable
 # ---------------------------------------------------------------------------
 
-add_executable(rdmp_server
-    src/rdmp_server.cpp
-    src/rdmp_server_main.cpp
+add_executable(rmdp_server
+    src/rmdp_server.cpp
+    src/rmdp_server_main.cpp
 )
 
-target_include_directories(rdmp_server PRIVATE include)
-target_link_libraries(rdmp_server PRIVATE rdmp_core)
+target_include_directories(rmdp_server PRIVATE include)
+target_link_libraries(rmdp_server PRIVATE rmdp_core)
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -80,5 +80,5 @@ endif()
 # Install targets (optional)
 # ---------------------------------------------------------------------------
 
-install(TARGETS rdmp_client rdmp_server RUNTIME DESTINATION bin)
-install(DIRECTORY include/ DESTINATION include/rdmp)
+install(TARGETS rmdp_client rmdp_server RUNTIME DESTINATION bin)
+install(DIRECTORY include/ DESTINATION include/rmdp)

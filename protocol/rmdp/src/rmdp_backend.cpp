@@ -1,12 +1,12 @@
-#include "rdmp_backend.hpp"
-#include "rdmp_s3.hpp"
-#include "rdmp_local_files.hpp"
-#include "rdmp_common.hpp"
+#include "rmdp_backend.hpp"
+#include "rmdp_s3.hpp"
+#include "rmdp_local_files.hpp"
+#include "rmdp_common.hpp"
 
 #include <memory>
 #include <stdexcept>
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
 // S3Backend – wraps S3Client as an IStorageBackend
@@ -50,4 +50,4 @@ std::unique_ptr<IStorageBackend> makeStorageBackend(const ServerConfig& cfg) {
     return std::make_unique<S3Backend>(cfg.s3);
 }
 
-} // namespace rdmp
+} // namespace rmdp
