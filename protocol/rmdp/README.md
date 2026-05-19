@@ -4,7 +4,7 @@
 
 RDMP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed **on at least one** server endpoint – or, in bypass mode, on every server endpoint.
 
-The canonical use case in the SDMI context is issuing scale-up / scale-down commands to single decentralized infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**.
+The canonical use case in the SDMI context is issuing scale-up / scale-down commands to single decentralized infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator / task status distributor to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**.
 
 ---
 
@@ -16,18 +16,16 @@ Client 2 ─┼────> UDP Multicast >────── ┼─ Server 2
           │                            └─ Server 3
           │
           └──── S3 / Ceph Object Storage (shared task queue + status)
-                ▲
-                │  All nodes read / write task / status objects
 ```
 
 ### Diagrams / SDMI Integration
 
 As example the desired SDMI integration for scaling up a distributed docker environment (multi-datacenter setup).
 
-- Docker Container Subnet: 172.17.100.0/24
-- Docker Orchestrator Subnet: 10.10.100.0/24
-- Docker Orchestrator VM1 (datacenter1): 10.10.100.253
-- Docker Orchestrator VM2 (datacenter2): 10.10.100.254
+- Docker Container Subnet: `172.17.100.0/24`
+- Docker Orchestrator Subnet: `10.10.100.0/24`
+- Docker Orchestrator VM1 (datacenter1): `10.10.100.253`
+- Docker Orchestrator VM2 (datacenter2): `10.10.100.254`
 
 The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-scale tasks to `sdmi-orch-seg1-node1` with IPv4 10.10.100.253 and `sdmi-orch-seg1-node2` with IPv4 10.10.100.254 using the SDMI RMDP architecture.
 
@@ -39,7 +37,7 @@ The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-
 
 ![OrchestratorUpscaleNode2](/diagram/SDMI-Orchestrator-Example-Upscale-Node2.png)
 
-> [NOTE!]
+> [!NOTE]
 > Note that the monitoring nodes shold be responsible for task-re-execution on task failure, **not** the RDMP protocol for a strict layer seperation.
 
 ### Client (MSG Distributor Client)
