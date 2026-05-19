@@ -1,12 +1,12 @@
 #pragma once
 
-#include "rdmp_backend.hpp"
-#include "rdmp_common.hpp"
+#include "rmdp_backend.hpp"
+#include "rmdp_common.hpp"
 
 #include <string>
 #include <vector>
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
 // LocalFilesBackend
@@ -44,4 +44,4 @@ private:
     static void ensureDir(const std::string& file_path);
 };
 
-} // namespace rdmp
+} // namespace rmdp

@@ -16,9 +16,9 @@
 
 #include <boost/test/unit_test.hpp>
 
-#include "rdmp_common.hpp"
-#include "rdmp_local_files.hpp"
-#include "rdmp_backend.hpp"
+#include "rmdp_common.hpp"
+#include "rmdp_local_files.hpp"
+#include "rmdp_backend.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -29,7 +29,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-using namespace rdmp;
+using namespace rmdp;
 
 // ---------------------------------------------------------------------------
 // Minimal in-process "node" that replicates the server's task-lifecycle logic
@@ -198,7 +198,7 @@ private:
 
 struct EndToEndFixture {
     EndToEndFixture() {
-        char tmpl[] = "/tmp/rdmp_e2e_XXXXXX";
+        char tmpl[] = "/tmp/rmdp_e2e_XXXXXX";
         const char* dir = mkdtemp(tmpl);
         BOOST_REQUIRE(dir != nullptr);
         base_dir_ = dir;

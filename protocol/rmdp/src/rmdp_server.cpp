@@ -1,4 +1,4 @@
-#include "rdmp_server.hpp"
+#include "rmdp_server.hpp"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -11,10 +11,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
-// Storage key prefixes (must match rdmp_client.cpp)
+// Storage key prefixes (must match rmdp_client.cpp)
 // ---------------------------------------------------------------------------
 
 static const std::string S3_TASK_PREFIX   = "tasks/";
@@ -24,13 +24,13 @@ static const std::string S3_STATUS_PREFIX = "status/";
 // Constructor / destructor
 // ---------------------------------------------------------------------------
 
-RDMPServer::RDMPServer(const std::string& config_path)
+RMDPServer::RMDPServer(const std::string& config_path)
     : config_(loadServerConfig(config_path)),
       backend_(makeStorageBackend(config_)) {
     setupSocket();
 }
 
-RDMPServer::~RDMPServer() {
+RMDPServer::~RMDPServer() {
     if (sock_fd_ >= 0) {
         close(sock_fd_);
         sock_fd_ = -1;
@@ -41,7 +41,7 @@ RDMPServer::~RDMPServer() {
 // Task handler (default: print and return "ok")
 // ---------------------------------------------------------------------------
 
-void RDMPServer::setTaskHandler(TaskHandler handler) {
+void RMDPServer::setTaskHandler(TaskHandler handler) {
     handler_ = std::move(handler);
 }
 
@@ -49,7 +49,7 @@ void RDMPServer::setTaskHandler(TaskHandler handler) {
 // UDP multicast receive socket
 // ---------------------------------------------------------------------------
 
-void RDMPServer::setupSocket() {
+void RMDPServer::setupSocket() {
     sock_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd_ < 0)
         throw std::runtime_error(std::string("socket() failed: ") + strerror(errno));
@@ -92,7 +92,7 @@ void RDMPServer::setupSocket() {
             std::string("IP_ADD_MEMBERSHIP failed: ") + strerror(errno));
     }
 
-    std::cout << "[RDMP/Server] Joined multicast group "
+    std::cout << "[RMDP/Server] Joined multicast group "
               << config_.multicast.group << ":" << config_.multicast.port
               << "\n";
 }
@@ -101,7 +101,7 @@ void RDMPServer::setupSocket() {
 // Non-blocking receive
 // ---------------------------------------------------------------------------
 
-bool RDMPServer::receiveAndProcess() {
+bool RMDPServer::receiveAndProcess() {
     uint8_t buf[65536];
     struct sockaddr_in src_addr = {};
     socklen_t addrlen = sizeof(src_addr);
@@ -111,19 +111,19 @@ bool RDMPServer::receiveAndProcess() {
                          &addrlen);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) return false;
-        std::cerr << "[RDMP/Server] recvfrom error: " << strerror(errno) << "\n";
+        std::cerr << "[RMDP/Server] recvfrom error: " << strerror(errno) << "\n";
         return false;
     }
 
-    if (static_cast<size_t>(n) < RDMP_HEADER_SIZE) return false;
+    if (static_cast<size_t>(n) < RMDP_HEADER_SIZE) return false;
 
     // Parse header
     uint32_t magic = 0;
     memcpy(&magic, buf, 4);
-    if (ntohl(magic) != RDMP_MAGIC) return false;
+    if (ntohl(magic) != RMDP_MAGIC) return false;
 
     const uint8_t version  = buf[4];
-    if (version != RDMP_VERSION) return false;
+    if (version != RMDP_VERSION) return false;
 
     const auto msg_type = static_cast<MsgType>(buf[5]);
 
@@ -135,9 +135,9 @@ bool RDMPServer::receiveAndProcess() {
     memcpy(&pay_len, buf + 42, 4);
     pay_len = ntohl(pay_len);
 
-    if (static_cast<ssize_t>(RDMP_HEADER_SIZE + pay_len) > n) return false;
+    if (static_cast<ssize_t>(RMDP_HEADER_SIZE + pay_len) > n) return false;
 
-    const std::string payload(reinterpret_cast<char*>(buf + RDMP_HEADER_SIZE), pay_len);
+    const std::string payload(reinterpret_cast<char*>(buf + RMDP_HEADER_SIZE), pay_len);
 
     if (msg_type == MsgType::TASK_ANNOUNCE) {
         handleTaskAnnounce(uuid, payload);
@@ -149,7 +149,7 @@ bool RDMPServer::receiveAndProcess() {
 // Status key helper
 // ---------------------------------------------------------------------------
 
-std::string RDMPServer::statusKey(const std::string& uuid) const {
+std::string RMDPServer::statusKey(const std::string& uuid) const {
     if (config_.bypass_pending_check)
         return S3_STATUS_PREFIX + uuid + "/" + config_.node_id;
     return S3_STATUS_PREFIX + uuid;
@@ -159,7 +159,7 @@ std::string RDMPServer::statusKey(const std::string& uuid) const {
 // Task announce handling
 // ---------------------------------------------------------------------------
 
-void RDMPServer::handleTaskAnnounce(const std::string& uuid,
+void RMDPServer::handleTaskAnnounce(const std::string& uuid,
                                      const std::string& payload) {
     if (config_.bypass_pending_check) {
         // Bypass mode: skip the shared S3 status check entirely.
@@ -193,7 +193,7 @@ void RDMPServer::handleTaskAnnounce(const std::string& uuid,
 // Optimistic S3 claim (PUT → GET verify)
 // ---------------------------------------------------------------------------
 
-bool RDMPServer::tryClaimTask(const std::string& uuid) {
+bool RMDPServer::tryClaimTask(const std::string& uuid) {
     const std::string status_key = statusKey(uuid);
 
     // Check current status on backend (per spec 2.4: only proceed if pending)
@@ -219,7 +219,7 @@ bool RDMPServer::tryClaimTask(const std::string& uuid) {
     claim.result     = "";
 
     if (!backend_->putObject(status_key, buildStatusJson(claim))) {
-        std::cerr << "[RDMP/Server] Failed to PUT claim for " << uuid << "\n";
+        std::cerr << "[RMDP/Server] Failed to PUT claim for " << uuid << "\n";
         return false;
     }
 
@@ -242,7 +242,7 @@ bool RDMPServer::tryClaimTask(const std::string& uuid) {
     executing_[uuid]    = et;
     local_status_[uuid] = claim;
 
-    std::cout << "[RDMP/Server] Claimed task: " << uuid << "\n";
+    std::cout << "[RMDP/Server] Claimed task: " << uuid << "\n";
     return true;
 }
 
@@ -250,7 +250,7 @@ bool RDMPServer::tryClaimTask(const std::string& uuid) {
 // Task execution
 // ---------------------------------------------------------------------------
 
-void RDMPServer::executeTask(const std::string& uuid,
+void RMDPServer::executeTask(const std::string& uuid,
                               const std::string& payload) {
     std::string result;
     TaskStatus  outcome = TaskStatus::COMPLETED;
@@ -259,12 +259,12 @@ void RDMPServer::executeTask(const std::string& uuid,
         if (handler_) {
             result = handler_(uuid, payload);
         } else {
-            std::cout << "[RDMP/Server] Executing task " << uuid
+            std::cout << "[RMDP/Server] Executing task " << uuid
                       << " payload=" << payload << "\n";
             result = "ok";
         }
     } catch (const std::exception& ex) {
-        std::cerr << "[RDMP/Server] Task " << uuid
+        std::cerr << "[RMDP/Server] Task " << uuid
                   << " threw: " << ex.what() << "\n";
         result  = ex.what();
         outcome = TaskStatus::FAILED;
@@ -275,7 +275,7 @@ void RDMPServer::executeTask(const std::string& uuid,
 
     executing_.erase(uuid);
     updateTaskStatus(uuid, outcome, config_.node_id, result);
-    std::cout << "[RDMP/Server] Task " << uuid << " "
+    std::cout << "[RMDP/Server] Task " << uuid << " "
               << taskStatusToString(outcome) << "\n";
 }
 
@@ -283,7 +283,7 @@ void RDMPServer::executeTask(const std::string& uuid,
 // Status persistence
 // ---------------------------------------------------------------------------
 
-void RDMPServer::updateTaskStatus(const std::string& uuid,
+void RMDPServer::updateTaskStatus(const std::string& uuid,
                                    TaskStatus         status,
                                    const std::string& server_id,
                                    const std::string& result) {
@@ -302,22 +302,22 @@ void RDMPServer::updateTaskStatus(const std::string& uuid,
 // Public API
 // ---------------------------------------------------------------------------
 
-void RDMPServer::runOnce() {
+void RMDPServer::runOnce() {
     backend_->sync();
     receiveAndProcess();
 }
 
-void RDMPServer::run() {
+void RMDPServer::run() {
     running_ = true;
-    std::cout << "[RDMP/Server] " << config_.node_id << " running\n";
+    std::cout << "[RMDP/Server] " << config_.node_id << " running\n";
     while (running_) {
         runOnce();
         usleep(1000);
     }
 }
 
-void RDMPServer::stop() {
+void RMDPServer::stop() {
     running_ = false;
 }
 
-} // namespace rdmp
+} // namespace rmdp

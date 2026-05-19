@@ -1,4 +1,4 @@
-#include "rdmp_client.hpp"
+#include "rmdp_client.hpp"
 
 #include <csignal>
 #include <cstdlib>
@@ -12,7 +12,7 @@
 // SIGTERM.  We store a pointer to the client so the handler can call stop().
 // ---------------------------------------------------------------------------
 
-static rdmp::RDMPClient* g_client = nullptr;
+static rmdp::RMDPClient* g_client = nullptr;
 
 static void signalHandler(int /*sig*/) {
     if (g_client) g_client->stop();
@@ -24,7 +24,7 @@ static void signalHandler(int /*sig*/) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: rdmp_client <config-file> [message]\n"
+        std::cerr << "Usage: rmdp_client <config-file> [message]\n"
                   << "\n"
                   << "  config-file  Path to the INI-style client configuration file.\n"
                   << "  message      Optional: immediately enqueue a task with this\n"
@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
     const bool        one_shot    = (argc >= 3);
 
     try {
-        rdmp::RDMPClient client(config_path);
+        rmdp::RMDPClient client(config_path);
         g_client = &client;
 
         std::signal(SIGINT,  signalHandler);
@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
             }
         } else {
             // Continuous relay mode
-            std::cout << "RDMP client started. Press Ctrl-C to stop.\n";
+            std::cout << "RMDP client started. Press Ctrl-C to stop.\n";
             client.run();
         }
     } catch (const std::exception& ex) {

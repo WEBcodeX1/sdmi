@@ -11,7 +11,7 @@
 #define BOOST_TEST_MODULE RdmpTests
 #include <boost/test/unit_test.hpp>
 
-#include "rdmp_common.hpp"
+#include "rmdp_common.hpp"
 
 #include <cstdio>
 #include <fstream>
@@ -24,7 +24,7 @@ namespace {
 // ---------------------------------------------------------------------------
 
 std::string writeTmpJson(const std::string& content) {
-    char path[] = "/tmp/rdmp_test_config_XXXXXX";
+    char path[] = "/tmp/rmdp_test_config_XXXXXX";
     int fd = mkstemp(path);
     if (fd < 0) throw std::runtime_error("mkstemp failed");
     close(fd);
@@ -60,7 +60,7 @@ BOOST_AUTO_TEST_CASE(ClientFullConfig) {
             "endpoints": ["http://mys3a:9000", "http://mys3b:9000"]
         },
         "local_files": {
-            "base_path": "/var/rdmp"
+            "base_path": "/var/rmdp"
         },
         "timeouts": {
             "task_execution_ms": 1000,
@@ -73,10 +73,10 @@ BOOST_AUTO_TEST_CASE(ClientFullConfig) {
     })";
 
     const std::string path = writeTmpJson(json);
-    const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
+    const rmdp::ClientConfig cfg = rmdp::loadClientConfig(path);
     std::remove(path.c_str());
 
-    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::S3);
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rmdp::SyncType::S3);
     BOOST_CHECK_EQUAL(cfg.multicast.group, "239.9.9.9");
     BOOST_CHECK_EQUAL(cfg.multicast.port,  6000);
     BOOST_CHECK_EQUAL(cfg.multicast.ttl,   16);
@@ -90,7 +90,7 @@ BOOST_AUTO_TEST_CASE(ClientFullConfig) {
     BOOST_CHECK_EQUAL(cfg.s3.endpoints.size(), 2u);
     BOOST_CHECK_EQUAL(cfg.s3.endpoints[0], "http://mys3a:9000");
     BOOST_CHECK_EQUAL(cfg.s3.endpoints[1], "http://mys3b:9000");
-    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/var/rdmp");
+    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/var/rmdp");
     BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,        1000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,       500u);
     BOOST_CHECK_EQUAL(cfg.timeouts.retry_delay_ms,           2000u);
@@ -106,16 +106,16 @@ BOOST_AUTO_TEST_CASE(ClientFullConfig) {
 BOOST_AUTO_TEST_CASE(ClientLocalFilesSynctype) {
     const std::string json = R"({
         "global": { "synctype": "local-files" },
-        "local_files": { "base_path": "/tmp/rdmp-test" },
+        "local_files": { "base_path": "/tmp/rmdp-test" },
         "node": { "id": "lf-client" }
     })";
 
     const std::string path = writeTmpJson(json);
-    const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
+    const rmdp::ClientConfig cfg = rmdp::loadClientConfig(path);
     std::remove(path.c_str());
 
-    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::LocalFiles);
-    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/tmp/rdmp-test");
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rmdp::SyncType::LocalFiles);
+    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/tmp/rmdp-test");
     BOOST_CHECK_EQUAL(cfg.node_id, "lf-client");
 }
 
@@ -127,19 +127,19 @@ BOOST_AUTO_TEST_CASE(ClientDefaults) {
     const std::string json = R"({})";
 
     const std::string path = writeTmpJson(json);
-    const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
+    const rmdp::ClientConfig cfg = rmdp::loadClientConfig(path);
     std::remove(path.c_str());
 
-    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::S3);
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rmdp::SyncType::S3);
     BOOST_CHECK_EQUAL(cfg.multicast.group, "239.1.2.3");
     BOOST_CHECK_EQUAL(cfg.multicast.port,  5000u);
     BOOST_CHECK_EQUAL(cfg.multicast.ttl,   32u);
     BOOST_CHECK_EQUAL(cfg.multicast.iface, "");
     BOOST_CHECK_EQUAL(cfg.s3.endpoint,     "http://localhost:9000");
-    BOOST_CHECK_EQUAL(cfg.s3.bucket,       "rdmp-tasks");
+    BOOST_CHECK_EQUAL(cfg.s3.bucket,       "rmdp-tasks");
     BOOST_CHECK_EQUAL(cfg.s3.max_answer_timeout_ms, 10000u);
     BOOST_CHECK(cfg.s3.endpoints.empty());
-    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/tmp/rdmp-tasks");
+    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/tmp/rmdp-tasks");
     BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,        5000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,      1000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.retry_delay_ms,           3000u);
@@ -157,20 +157,20 @@ BOOST_AUTO_TEST_CASE(ServerFullConfig) {
         "global": { "synctype": "local-files" },
         "multicast": { "group": "239.5.5.5", "port": 7000, "ttl": 8, "interface": "" },
         "s3": { "endpoint": "http://s3:9000", "bucket": "b", "access_key": "", "secret_key": "", "region": "us-east-1" },
-        "local_files": { "base_path": "/srv/rdmp" },
+        "local_files": { "base_path": "/srv/rmdp" },
         "timeouts": { "task_execution_ms": 2000, "s3_poll_interval_ms": 250 },
         "node": { "id": "myserver" },
         "server": { "bypass_pending_check": true }
     })";
 
     const std::string path = writeTmpJson(json);
-    const rdmp::ServerConfig cfg = rdmp::loadServerConfig(path);
+    const rmdp::ServerConfig cfg = rmdp::loadServerConfig(path);
     std::remove(path.c_str());
 
-    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::LocalFiles);
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rmdp::SyncType::LocalFiles);
     BOOST_CHECK_EQUAL(cfg.multicast.group, "239.5.5.5");
     BOOST_CHECK_EQUAL(cfg.multicast.port,  7000u);
-    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/srv/rdmp");
+    BOOST_CHECK_EQUAL(cfg.local_files.base_path, "/srv/rmdp");
     BOOST_CHECK_EQUAL(cfg.timeouts.task_execution_ms,   2000u);
     BOOST_CHECK_EQUAL(cfg.timeouts.s3_poll_interval_ms,  250u);
     // Unset fields use defaults
@@ -186,7 +186,7 @@ BOOST_AUTO_TEST_CASE(ServerFullConfig) {
 BOOST_AUTO_TEST_CASE(ServerBypassPendingCheckDefault) {
     const std::string json = R"({ "node": { "id": "srv1" } })";
     const std::string path = writeTmpJson(json);
-    const rdmp::ServerConfig cfg = rdmp::loadServerConfig(path);
+    const rmdp::ServerConfig cfg = rmdp::loadServerConfig(path);
     std::remove(path.c_str());
     BOOST_CHECK_EQUAL(cfg.bypass_pending_check, false);
 }
@@ -196,22 +196,22 @@ BOOST_AUTO_TEST_CASE(ServerBypassPendingCheckDefault) {
 // ---------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(MissingFile) {
-    BOOST_CHECK_THROW(rdmp::loadClientConfig("/nonexistent/path/config.json"),
+    BOOST_CHECK_THROW(rmdp::loadClientConfig("/nonexistent/path/config.json"),
                       std::runtime_error);
 }
 
 BOOST_AUTO_TEST_CASE(MalformedJson) {
     const std::string path = writeTmpJson("{ this is not json }");
-    BOOST_CHECK_THROW(rdmp::loadClientConfig(path), std::runtime_error);
+    BOOST_CHECK_THROW(rmdp::loadClientConfig(path), std::runtime_error);
     std::remove(path.c_str());
 }
 
 BOOST_AUTO_TEST_CASE(UnknownSynctypeFallsBackToS3) {
     const std::string json = R"({ "global": { "synctype": "ftp" } })";
     const std::string path = writeTmpJson(json);
-    const rdmp::ClientConfig cfg = rdmp::loadClientConfig(path);
+    const rmdp::ClientConfig cfg = rmdp::loadClientConfig(path);
     std::remove(path.c_str());
-    BOOST_CHECK_EQUAL(cfg.global.synctype, rdmp::SyncType::S3);
+    BOOST_CHECK_EQUAL(cfg.global.synctype, rmdp::SyncType::S3);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

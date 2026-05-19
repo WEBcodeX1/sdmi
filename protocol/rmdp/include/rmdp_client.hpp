@@ -1,7 +1,7 @@
 #pragma once
 
-#include "rdmp_backend.hpp"
-#include "rdmp_common.hpp"
+#include "rmdp_backend.hpp"
+#include "rmdp_common.hpp"
 
 #include <list>
 #include <memory>
@@ -10,7 +10,7 @@
 
 #include <netinet/in.h>
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
 // PendingMulticast
@@ -27,9 +27,9 @@ struct PendingMulticast {
 };
 
 // ---------------------------------------------------------------------------
-// RDMPClient
+// RMDPClient
 //
-// Single-threaded RDMP client (MSG distributor client).
+// Single-threaded RMDP client (MSG distributor client).
 //
 // Workflow
 // --------
@@ -42,10 +42,10 @@ struct PendingMulticast {
 //          every active client relays every task.
 // ---------------------------------------------------------------------------
 
-class RDMPClient {
+class RMDPClient {
 public:
-    explicit RDMPClient(const std::string& config_path);
-    ~RDMPClient();
+    explicit RMDPClient(const std::string& config_path);
+    ~RMDPClient();
 
     // Add a new task/message.  Stores the task in the backend and schedules
     // the UDP multicast burst.  Returns the assigned UUID, or "" on failure.
@@ -104,4 +104,4 @@ private:
     bool storeTask(const std::string& uuid, const std::string& payload);
 };
 
-} // namespace rdmp
+} // namespace rmdp

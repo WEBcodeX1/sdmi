@@ -12,13 +12,13 @@
         "endpoint": "http://s3.internal.example.com:9000",
         "endpoints": [],
         "max_answer_timeout_ms": 5000,
-        "bucket": "rdmp-tasks",
+        "bucket": "rmdp-tasks",
         "access_key": "your-access-key",
         "secret_key": "your-secret-key",
         "region": "us-east-1"
     },
     "local_files": {
-        "base_path": "/tmp/rdmp-tasks"
+        "base_path": "/tmp/rmdp-tasks"
     },
     "timeouts": {
         "task_execution_ms": 5000,

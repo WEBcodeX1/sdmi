@@ -10,8 +10,8 @@
 
 #include <boost/test/unit_test.hpp>
 
-#include "rdmp_local_files.hpp"
-#include "rdmp_common.hpp"
+#include "rmdp_local_files.hpp"
+#include "rmdp_common.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -25,14 +25,14 @@ namespace fs = std::filesystem;
 
 struct LocalFilesBackendFixture {
     LocalFilesBackendFixture() {
-        char tmpl[] = "/tmp/rdmp_lf_test_XXXXXX";
+        char tmpl[] = "/tmp/rmdp_lf_test_XXXXXX";
         const char* dir = mkdtemp(tmpl);
         BOOST_REQUIRE(dir != nullptr);
         base_dir_ = dir;
 
-        rdmp::LocalFilesConfig cfg;
+        rmdp::LocalFilesConfig cfg;
         cfg.base_path = base_dir_;
-        backend_ = std::make_unique<rdmp::LocalFilesBackend>(cfg);
+        backend_ = std::make_unique<rmdp::LocalFilesBackend>(cfg);
     }
 
     ~LocalFilesBackendFixture() {
@@ -40,7 +40,7 @@ struct LocalFilesBackendFixture {
     }
 
     std::string base_dir_;
-    std::unique_ptr<rdmp::LocalFilesBackend> backend_;
+    std::unique_ptr<rmdp::LocalFilesBackend> backend_;
 };
 
 BOOST_FIXTURE_TEST_SUITE(LocalFilesBackendTest, LocalFilesBackendFixture)
@@ -121,19 +121,19 @@ BOOST_AUTO_TEST_CASE(LargeBody) {
 
 BOOST_AUTO_TEST_CASE(JsonPayloadRoundTrip) {
     // Simulate the actual task storage flow
-    rdmp::Task t;
-    t.uuid       = rdmp::generateUUID();
+    rmdp::Task t;
+    t.uuid       = rmdp::generateUUID();
     t.payload    = "scale-out node-42";
     t.created_by = "client1";
-    t.created_at = rdmp::currentTimestamp();
+    t.created_at = rmdp::currentTimestamp();
 
     const std::string key  = "tasks/" + t.uuid;
-    const std::string body = rdmp::buildTaskJson(t);
+    const std::string body = rmdp::buildTaskJson(t);
 
     BOOST_CHECK(backend_->putObject(key, body));
 
     const std::string got  = backend_->getObject(key);
-    rdmp::Task        back = rdmp::parseTask(got);
+    rmdp::Task        back = rmdp::parseTask(got);
 
     BOOST_CHECK_EQUAL(back.uuid,    t.uuid);
     BOOST_CHECK_EQUAL(back.payload, t.payload);
@@ -144,20 +144,20 @@ BOOST_AUTO_TEST_CASE(JsonPayloadRoundTrip) {
 // ---------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(StatusRecordRoundTrip) {
-    rdmp::TaskStatusRecord r;
-    r.uuid       = rdmp::generateUUID();
-    r.status     = rdmp::TaskStatus::COMPLETED;
+    rmdp::TaskStatusRecord r;
+    r.uuid       = rmdp::generateUUID();
+    r.status     = rmdp::TaskStatus::COMPLETED;
     r.server_id  = "srv1";
-    r.updated_at = rdmp::currentTimestamp();
+    r.updated_at = rmdp::currentTimestamp();
     r.result     = "ok";
 
     const std::string key  = "status/" + r.uuid;
-    const std::string body = rdmp::buildStatusJson(r);
+    const std::string body = rmdp::buildStatusJson(r);
 
     BOOST_CHECK(backend_->putObject(key, body));
 
     const std::string          got  = backend_->getObject(key);
-    rdmp::TaskStatusRecord     back = rdmp::parseTaskStatus(got);
+    rmdp::TaskStatusRecord     back = rmdp::parseTaskStatus(got);
 
     BOOST_CHECK_EQUAL(back.uuid,      r.uuid);
     BOOST_CHECK_EQUAL(back.status,    r.status);
@@ -170,9 +170,9 @@ BOOST_AUTO_TEST_CASE(StatusRecordRoundTrip) {
 // ---------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(TwoBackendsSameDir) {
-    rdmp::LocalFilesConfig cfg;
+    rmdp::LocalFilesConfig cfg;
     cfg.base_path = base_dir_;
-    rdmp::LocalFilesBackend b2(cfg);
+    rmdp::LocalFilesBackend b2(cfg);
 
     backend_->putObject("tasks/shared-uuid", "from-b1");
     BOOST_CHECK_EQUAL(b2.getObject("tasks/shared-uuid"), "from-b1");

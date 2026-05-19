@@ -1,4 +1,4 @@
-#include "rdmp_local_files.hpp"
+#include "rmdp_local_files.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -10,7 +10,7 @@
 
 namespace fs = std::filesystem;
 
-namespace rdmp {
+namespace rmdp {
 
 LocalFilesBackend::LocalFilesBackend(const LocalFilesConfig& config)
     : base_path_(config.base_path) {
@@ -111,4 +111,4 @@ std::vector<std::string> LocalFilesBackend::listObjects(const std::string& prefi
     return keys;
 }
 
-} // namespace rdmp
+} // namespace rmdp

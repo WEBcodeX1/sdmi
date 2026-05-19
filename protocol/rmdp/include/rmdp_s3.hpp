@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rdmp_common.hpp"
+#include "rmdp_common.hpp"
 
 #include <string>
 #include <vector>
@@ -8,7 +8,7 @@
 // Forward-declare CURL to avoid pulling in curl headers in every TU.
 typedef void CURL;
 
-namespace rdmp {
+namespace rmdp {
 
 // ---------------------------------------------------------------------------
 // S3Client
@@ -86,4 +86,4 @@ private:
     static std::vector<std::string> parseListXml(const std::string& xml);
 };
 
-} // namespace rdmp
+} // namespace rmdp
