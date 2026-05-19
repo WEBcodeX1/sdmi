@@ -6,6 +6,9 @@ RMDP transmits **tasks 100% reliably** using multiple client and server entities
 
 The canonical use case in the SDMI context is issuing scale-up / scale-down commands to single decentralized infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator / task status distributor to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**.
 
+> [!WARNING]
+> The RMDP protocol has been engineered using GitHub AI, the results are impressive but still include dozens of mistakes: use carefully.
+
 ---
 
 ## Architecture
