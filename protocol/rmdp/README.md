@@ -1,8 +1,8 @@
-# RDMP – Reliable Message Distribution Protocol
+# RMDP – Reliable Message Distribution Protocol
 
-## What RDMP Does
+## What RMDP Does
 
-RDMP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed **on at least one** server endpoint – or, in bypass mode, on every server endpoint.
+RMDP transmits **tasks 100% reliably** using multiple client and server entities so that each task is executed **on at least one** server endpoint – or, in bypass mode, on every server endpoint.
 
 The canonical use case in the SDMI context is issuing scale-up / scale-down commands to single decentralized infrastructure nodes: a task is generated once, propagated to all participating servers via UDP multicast, and the cluster's S3 bucket acts as the shared arbitrator / task status distributor to minimise duplicate execution. Under bad network conditions (packet loss or delayed retransmission) a task **may still be executed by more than one server**.
 
@@ -38,7 +38,7 @@ The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-
 ![OrchestratorUpscaleNode2](/diagram/SDMI-Orchestrator-Example-Upscale-Node2.png)
 
 > [!NOTE]
-> Note that the monitoring nodes shold be responsible for task-re-execution on task failure, **not** the RDMP protocol for a strict layer seperation.
+> Note that the monitoring nodes shold be responsible for task-re-execution on task failure, **not** the RMDP protocol for a strict layer seperation.
 
 ### Client (MSG Distributor Client)
 
@@ -62,7 +62,7 @@ The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-
 1. Joins the UDP multicast group at startup.
 
 2. **Receive loop** (called by `runOnce()`):
-   - Non-blocking `recvfrom`; parses the RDMP wire-format header.
+   - Non-blocking `recvfrom`; parses the RMDP wire-format header.
    - For each `TASK_ANNOUNCE` datagram:
 
      **Normal mode (`bypass_pending_check = false`, default):**
@@ -92,12 +92,12 @@ The following diagrams shows exactly how the SDMI orchestrator distributes 2 up-
 
 ## Wire Format
 
-All RDMP messages are carried as UDP datagrams.
+All RMDP messages are carried as UDP datagrams.
 
 ```
 Offset  Size  Field
 ──────  ────  ─────────────────────────────────────────────
- 0       4    Magic number: 0x52444D50 ("RDMP"), big-endian
+ 0       4    Magic number: 0x52444D50 ("RMDP"), big-endian
  4       1    Protocol version: 0x01
  5       1    Message type: 0x01 = TASK_ANNOUNCE
  6      36    Task UUID (ASCII, e.g. "550e8400-e29b-41d4-a716-446655440000")
@@ -168,12 +168,12 @@ sudo apt-get install build-essential cmake libcurl4-openssl-dev libssl-dev libbo
 ### Compile
 
 ```bash
-cd protocol/rdmp
+cd protocol/rmdp
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ```
 
-Produces two binaries in `build/`:  `rdmp_client`  and  `rdmp_server`.
+Produces two binaries in `build/`:  `rmdp_client`  and  `rmdp_server`.
 
 ---
 
@@ -203,13 +203,13 @@ Both binaries accept a single argument: the path to a **JSON** config file.
             "http://s3-replica2.internal.example.com:9000"
         ],
         "max_answer_timeout_ms": 5000,
-        "bucket": "rdmp-tasks",
+        "bucket": "rmdp-tasks",
         "access_key": "your-access-key",
         "secret_key": "your-secret-key",
         "region": "int-segment-1"
     },
     "local_files": {
-        "base_path": "/tmp/rdmp-tasks"
+        "base_path": "/tmp/rmdp-tasks"
     },
     "timeouts": {
         "task_execution_ms": 5000,
@@ -241,13 +241,13 @@ Both binaries accept a single argument: the path to a **JSON** config file.
         "endpoint": "http://s3.internal.example.com:9000",
         "endpoints": [],
         "max_answer_timeout_ms": 5000,
-        "bucket": "rdmp-tasks",
+        "bucket": "rmdp-tasks",
         "access_key": "your-access-key",
         "secret_key": "your-secret-key",
         "region": "int-segment-1"
     },
     "local_files": {
-        "base_path": "/tmp/rdmp-tasks"
+        "base_path": "/tmp/rmdp-tasks"
     },
     "timeouts": {
         "task_execution_ms": 5000,
@@ -303,7 +303,7 @@ request.  The primary `endpoint` is always tried first.
 
 ### Storage backends
 
-RDMP supports two backends, selected via `global.synctype`:
+RMDP supports two backends, selected via `global.synctype`:
 
 | Value          | Description                                                       |
 |----------------|-------------------------------------------------------------------|
@@ -314,12 +314,12 @@ The `local-files` backend writes files atomically (write to `.tmp` then `rename`
 
 ### Recommended backend: local Ceph with S3 object storage
 
-For production deployments, it is **strongly recommended** to run a **local Ceph cluster** (co-located with your RDMP nodes) and configure RDMP to use its S3-compatible object storage (Ceph RadosGW).
+For production deployments, it is **strongly recommended** to run a **local Ceph cluster** (co-located with your RMDP nodes) and configure RMDP to use its S3-compatible object storage (Ceph RadosGW).
 
 A local Ceph cluster provides:
 
 - **Lowest possible latency** – storage I/O stays on the local network segment, avoiding WAN round-trips that would increase claim-cycle times.
-- **No external dependency** – the entire RDMP shared state is contained within your own infrastructure.
+- **No external dependency** – the entire RMDP shared state is contained within your own infrastructure.
 - **High availability** – Ceph replicates data across multiple OSDs, so there is no single storage point of failure.
 - **S3 API compatibility** – no code changes required; simply point the `s3.endpoint` at your Ceph RadosGW URL.
 
@@ -328,7 +328,7 @@ Example configuration snippet for a local Ceph RadosGW:
 ```json
 "s3": {
     "endpoint": "http://ceph-rgw.internal:7480",
-    "bucket": "rdmp-tasks",
+    "bucket": "rmdp-tasks",
     "access_key": "your-ceph-access-key",
     "secret_key": "your-ceph-secret-key",
     "region": "int-segment-1",
@@ -343,28 +343,28 @@ Example configuration snippet for a local Ceph RadosGW:
 ### Start servers (on each server host)
 
 ```bash
-./build/rdmp_server /etc/rdmp/server.json
+./build/rmdp_server /etc/rmdp/server.json
 ```
 
 ### Start clients in relay mode
 
 ```bash
-./build/rdmp_client /etc/rdmp/client.json
+./build/rmdp_client /etc/rmdp/client.json
 ```
 
 ### Submit a one-shot task
 
 ```bash
-./build/rdmp_client /etc/rdmp/client.json "scale-out node-42"
+./build/rmdp_client /etc/rmdp/client.json "scale-out node-42"
 # → Task UUID: 550e8400-e29b-41d4-a716-446655440000
 ```
 
 ### Integrate the client library into your application
 
 ```cpp
-#include "rdmp_client.hpp"
+#include "rmdp_client.hpp"
 
-rdmp::RDMPClient client("/etc/rdmp/client.json");
+rmdp::RMDPClient client("/etc/rmdp/client.json");
 std::string uuid = client.addNewTask("my-control-plane-message");
 
 // Event loop integration (call from your own loop):
@@ -377,9 +377,9 @@ while (running) {
 ### Register a custom task handler on the server
 
 ```cpp
-#include "rdmp_server.hpp"
+#include "rmdp_server.hpp"
 
-rdmp::RDMPServer server("/etc/rdmp/server.json");
+rmdp::RMDPServer server("/etc/rmdp/server.json");
 
 server.setTaskHandler([](const std::string& uuid,
                          const std::string& payload) -> std::string {
@@ -394,15 +394,15 @@ server.run();
 ### Python bindings
 
 ```python
-import rdmp
+import rmdp
 
 # Create a client and submit a task
-client = rdmp.RDMPClient("client.json")
+client = rmdp.RMDPClient("client.json")
 uuid = client.add_new_task("scale-out node-7")
 client.run_once()
 
 # Create a server with a custom handler
-server = rdmp.RDMPServer("server.json")
+server = rmdp.RMDPServer("server.json")
 
 def my_handler(uuid, payload):
     print(f"Executing task {uuid}: {payload}")
@@ -422,7 +422,7 @@ Tests run without any real S3 cluster or network sockets, using the `local-files
 ### Run tests
 
 ```bash
-cd protocol/rdmp
+cd protocol/rmdp
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j$(nproc)
 cd build && ctest --output-on-failure
