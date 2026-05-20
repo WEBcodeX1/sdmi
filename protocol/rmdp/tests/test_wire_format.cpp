@@ -26,12 +26,14 @@ std::vector<uint8_t> buildDatagram(const std::string& uuid,
     const uint32_t pay_len = htonl(static_cast<uint32_t>(payload.size()));
 
     std::vector<uint8_t> buf;
-    buf.reserve(rmdp::RMDP_HEADER_SIZE + payload.size());
+    buf.reserve(rmdp::RMDP_HEADER_SIZE + payload.size() + rmdp::RMDP_FOOTER_SIZE);
 
     // Magic (4 B)
     buf.insert(buf.end(),
                reinterpret_cast<const uint8_t*>(&magic),
                reinterpret_cast<const uint8_t*>(&magic) + 4);
+    // Frame start marker (1 B)
+    buf.push_back(rmdp::RMDP_FRAME_START);
     // Version (1 B)
     buf.push_back(rmdp::RMDP_VERSION);
     // Message type (1 B)
@@ -44,6 +46,11 @@ std::vector<uint8_t> buildDatagram(const std::string& uuid,
                reinterpret_cast<const uint8_t*>(&pay_len) + 4);
     // Payload (N B)
     buf.insert(buf.end(), payload.begin(), payload.end());
+    // End-of-frame footer: magic (4 B) + frame end marker (1 B)
+    buf.insert(buf.end(),
+               reinterpret_cast<const uint8_t*>(&magic),
+               reinterpret_cast<const uint8_t*>(&magic) + 4);
+    buf.push_back(rmdp::RMDP_FRAME_END);
 
     return buf;
 }
@@ -59,24 +66,35 @@ struct ParsedDatagram {
 
 ParsedDatagram parseDatagram(const std::vector<uint8_t>& buf) {
     ParsedDatagram d;
-    if (buf.size() < rmdp::RMDP_HEADER_SIZE) return d;
+    if (buf.size() < rmdp::RMDP_HEADER_SIZE + rmdp::RMDP_FOOTER_SIZE) return d;
 
     uint32_t magic = 0;
     memcpy(&magic, buf.data(), 4);
     if (ntohl(magic) != rmdp::RMDP_MAGIC) return d;
 
-    d.version  = buf[4];
-    d.msg_type = static_cast<rmdp::MsgType>(buf[5]);
+    // Frame start marker
+    if (buf[4] != rmdp::RMDP_FRAME_START) return d;
+
+    d.version  = buf[5];
+    d.msg_type = static_cast<rmdp::MsgType>(buf[6]);
 
     char uuid_buf[37] = {};
-    memcpy(uuid_buf, buf.data() + 6, 36);
+    memcpy(uuid_buf, buf.data() + 7, 36);
     d.uuid = uuid_buf;
 
     uint32_t pay_len = 0;
-    memcpy(&pay_len, buf.data() + 42, 4);
+    memcpy(&pay_len, buf.data() + 43, 4);
     pay_len = ntohl(pay_len);
 
-    if (buf.size() < rmdp::RMDP_HEADER_SIZE + pay_len) return d;
+    if (buf.size() < rmdp::RMDP_HEADER_SIZE + pay_len + rmdp::RMDP_FOOTER_SIZE) return d;
+
+    // Frame end marker: magic + RMDP_FRAME_END
+    const size_t footer_offset = rmdp::RMDP_HEADER_SIZE + pay_len;
+    uint32_t end_magic = 0;
+    memcpy(&end_magic, buf.data() + footer_offset, 4);
+    if (ntohl(end_magic) != rmdp::RMDP_MAGIC) return d;
+    if (buf[footer_offset + 4] != rmdp::RMDP_FRAME_END) return d;
+
     d.payload.assign(reinterpret_cast<const char*>(buf.data() + rmdp::RMDP_HEADER_SIZE),
                      pay_len);
     d.valid = true;
@@ -88,13 +106,23 @@ ParsedDatagram parseDatagram(const std::vector<uint8_t>& buf) {
 BOOST_AUTO_TEST_SUITE(WireFormatTest)
 
 BOOST_AUTO_TEST_CASE(HeaderSizeConstant) {
-    // Documented: 4+1+1+36+4 = 46
-    BOOST_CHECK_EQUAL(rmdp::RMDP_HEADER_SIZE, 46u);
+    // Documented: 4+1+1+1+36+4 = 47
+    BOOST_CHECK_EQUAL(rmdp::RMDP_HEADER_SIZE, 47u);
+}
+
+BOOST_AUTO_TEST_CASE(FooterSizeConstant) {
+    // Documented: 4 (magic) + 1 (frame_end) = 5
+    BOOST_CHECK_EQUAL(rmdp::RMDP_FOOTER_SIZE, 5u);
 }
 
 BOOST_AUTO_TEST_CASE(MagicConstant) {
-    // 'R','D','M','P'
+    // 'R','M','D','P'
     BOOST_CHECK_EQUAL(rmdp::RMDP_MAGIC, 0x524D4450u);
+}
+
+BOOST_AUTO_TEST_CASE(FrameMarkerConstants) {
+    BOOST_CHECK_EQUAL(rmdp::RMDP_FRAME_START, 0x01u);
+    BOOST_CHECK_EQUAL(rmdp::RMDP_FRAME_END,   0x02u);
 }
 
 BOOST_AUTO_TEST_CASE(TaskAnnounceRoundTrip) {
@@ -102,7 +130,8 @@ BOOST_AUTO_TEST_CASE(TaskAnnounceRoundTrip) {
     const std::string payload = "scale-out node-7";
 
     auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, payload);
-    BOOST_REQUIRE_EQUAL(buf.size(), rmdp::RMDP_HEADER_SIZE + payload.size());
+    BOOST_REQUIRE_EQUAL(buf.size(),
+                        rmdp::RMDP_HEADER_SIZE + payload.size() + rmdp::RMDP_FOOTER_SIZE);
 
     auto d = parseDatagram(buf);
     BOOST_CHECK(d.valid);
@@ -115,7 +144,7 @@ BOOST_AUTO_TEST_CASE(TaskAnnounceRoundTrip) {
 BOOST_AUTO_TEST_CASE(EmptyPayload) {
     const std::string uuid = rmdp::generateUUID();
     auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, "");
-    BOOST_CHECK_EQUAL(buf.size(), rmdp::RMDP_HEADER_SIZE);
+    BOOST_CHECK_EQUAL(buf.size(), rmdp::RMDP_HEADER_SIZE + rmdp::RMDP_FOOTER_SIZE);
 
     auto d = parseDatagram(buf);
     BOOST_CHECK(d.valid);
@@ -154,7 +183,37 @@ BOOST_AUTO_TEST_CASE(PayloadLengthOverflow) {
     auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, "x");
     // Set payload_len to something larger than the buffer
     uint32_t big = htonl(99999);
-    memcpy(buf.data() + 42, &big, 4);
+    memcpy(buf.data() + 43, &big, 4);
+    auto d = parseDatagram(buf);
+    BOOST_CHECK(!d.valid);
+}
+
+BOOST_AUTO_TEST_CASE(MissingEndMarker) {
+    // A datagram without the end-of-frame footer must be rejected.
+    const std::string uuid = rmdp::generateUUID();
+    auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, "hello");
+    // Strip the 5-byte footer
+    buf.resize(buf.size() - rmdp::RMDP_FOOTER_SIZE);
+    auto d = parseDatagram(buf);
+    BOOST_CHECK(!d.valid);
+}
+
+BOOST_AUTO_TEST_CASE(WrongEndMarkerByte) {
+    // A datagram with a corrupted end-of-frame byte (not 0x02) must be rejected.
+    const std::string uuid = rmdp::generateUUID();
+    auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, "hello");
+    // Overwrite the last byte (frame_end marker)
+    buf.back() = 0xFF;
+    auto d = parseDatagram(buf);
+    BOOST_CHECK(!d.valid);
+}
+
+BOOST_AUTO_TEST_CASE(WrongStartMarkerByte) {
+    // A datagram with a corrupted start-of-frame byte (not 0x01) must be rejected.
+    const std::string uuid = rmdp::generateUUID();
+    auto buf = buildDatagram(uuid, rmdp::MsgType::TASK_ANNOUNCE, "hello");
+    // Byte 4 is the frame start marker
+    buf[4] = 0xFF;
     auto d = parseDatagram(buf);
     BOOST_CHECK(!d.valid);
 }

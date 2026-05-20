@@ -100,13 +100,21 @@ All RMDP messages are carried as UDP datagrams.
 ```
 Offset  Size  Field
 ──────  ────  ─────────────────────────────────────────────
- 0       4    Magic number: 0x52444D50 ("RMDP"), big-endian
- 4       1    Protocol version: 0x01
- 5       1    Message type: 0x01 = TASK_ANNOUNCE
- 6      36    Task UUID (ASCII, e.g. "550e8400-e29b-41d4-a716-446655440000")
-42       4    Payload length N (big-endian uint32)
-46       N    Payload (arbitrary bytes)
+ 0       4    Magic number: 0x524D4450 ("RMDP"), big-endian
+ 4       1    Frame start marker: 0x01
+ 5       1    Protocol version: 0x01
+ 6       1    Message type: 0x01 = TASK_ANNOUNCE
+ 7      36    Task UUID (ASCII, e.g. "550e8400-e29b-41d4-a716-446655440000")
+43       4    Payload length N (big-endian uint32)
+47       N    Payload (arbitrary bytes)
+47+N     4    Magic number: 0x524D4450 ("RMDP"), big-endian  [end-of-frame footer]
+51+N     1    Frame end marker: 0x02
 ```
+
+A datagram that does not carry the complete 5-byte end-of-frame footer
+(`magic + 0x02`) at the expected position **must be discarded** by the
+receiver. This guarantees that truncated or fragmented UDP payloads are
+detected and never processed.
 
 ---
 

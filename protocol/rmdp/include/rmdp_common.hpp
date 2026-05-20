@@ -12,12 +12,16 @@ namespace rmdp {
 // Protocol wire-format constants
 // ---------------------------------------------------------------------------
 
-static constexpr uint32_t RMDP_MAGIC   = 0x524D4450u; // 'R','M','D','P'
-static constexpr uint8_t  RMDP_VERSION = 0x01u;
+static constexpr uint32_t RMDP_MAGIC        = 0x524D4450u; // 'R','M','D','P'
+static constexpr uint8_t  RMDP_VERSION      = 0x01u;
+static constexpr uint8_t  RMDP_FRAME_START  = 0x01u;       // start-of-frame marker
+static constexpr uint8_t  RMDP_FRAME_END    = 0x02u;       // end-of-frame marker
 
-// Minimum size of a valid RMDP UDP datagram:
-//   4 (magic) + 1 (version) + 1 (msg_type) + 36 (uuid) + 4 (payload_len) = 46
-static constexpr size_t RMDP_HEADER_SIZE = 46u;
+// Header: 4 (magic) + 1 (frame_start) + 1 (version) + 1 (msg_type) + 36 (uuid) + 4 (payload_len) = 47
+static constexpr size_t RMDP_HEADER_SIZE = 47u;
+
+// Footer appended after the payload: 4 (magic) + 1 (frame_end) = 5
+static constexpr size_t RMDP_FOOTER_SIZE = 5u;
 
 // ---------------------------------------------------------------------------
 // Message types (1 byte in wire format)
