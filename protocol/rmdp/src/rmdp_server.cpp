@@ -115,27 +115,37 @@ bool RMDPServer::receiveAndProcess() {
         return false;
     }
 
-    if (static_cast<size_t>(n) < RMDP_HEADER_SIZE) return false;
+    if (static_cast<size_t>(n) < RMDP_HEADER_SIZE + RMDP_FOOTER_SIZE) return false;
 
-    // Parse header
+    // Validate start-of-frame: magic (4B) + RMDP_FRAME_START (1B)
     uint32_t magic = 0;
     memcpy(&magic, buf, 4);
     if (ntohl(magic) != RMDP_MAGIC) return false;
 
-    const uint8_t version  = buf[4];
+    if (buf[4] != RMDP_FRAME_START) return false;
+
+    const uint8_t version  = buf[5];
     if (version != RMDP_VERSION) return false;
 
-    const auto msg_type = static_cast<MsgType>(buf[5]);
+    const auto msg_type = static_cast<MsgType>(buf[6]);
 
     char uuid_buf[37] = {};
-    memcpy(uuid_buf, buf + 6, 36);
+    memcpy(uuid_buf, buf + 7, 36);
     const std::string uuid(uuid_buf);
 
     uint32_t pay_len = 0;
-    memcpy(&pay_len, buf + 42, 4);
+    memcpy(&pay_len, buf + 43, 4);
     pay_len = ntohl(pay_len);
 
-    if (static_cast<ssize_t>(RMDP_HEADER_SIZE + pay_len) > n) return false;
+    // Total expected frame: header + payload + footer
+    if (static_cast<ssize_t>(RMDP_HEADER_SIZE + pay_len + RMDP_FOOTER_SIZE) > n) return false;
+
+    // Validate end-of-frame footer: magic (4B) + RMDP_FRAME_END (1B)
+    const size_t footer_offset = RMDP_HEADER_SIZE + pay_len;
+    uint32_t end_magic = 0;
+    memcpy(&end_magic, buf + footer_offset, 4);
+    if (ntohl(end_magic) != RMDP_MAGIC) return false;
+    if (buf[footer_offset + 4] != RMDP_FRAME_END) return false;
 
     const std::string payload(reinterpret_cast<char*>(buf + RMDP_HEADER_SIZE), pay_len);
 

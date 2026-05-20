@@ -73,14 +73,15 @@ void RMDPClient::sendMulticast(const std::string& uuid,
                                 MsgType            type,
                                 const std::string& payload) {
     // Build datagram:
-    //   4B magic | 1B version | 1B msg_type | 36B uuid | 4B payload_len | NB payload
+    //   4B magic | 1B frame_start | 1B version | 1B msg_type | 36B uuid | 4B payload_len | NB payload | 4B magic | 1B frame_end
     const uint32_t magic   = htonl(RMDP_MAGIC);
     const uint32_t pay_len = htonl(static_cast<uint32_t>(payload.size()));
 
     // Pre-allocate buffer (max UDP payload is ~65507 B)
     std::string buf;
-    buf.reserve(RMDP_HEADER_SIZE + payload.size());
+    buf.reserve(RMDP_HEADER_SIZE + payload.size() + RMDP_FOOTER_SIZE);
     buf.append(reinterpret_cast<const char*>(&magic),   4);
+    buf.push_back(static_cast<char>(RMDP_FRAME_START));
     buf.push_back(static_cast<char>(RMDP_VERSION));
     buf.push_back(static_cast<char>(type));
     if (uuid.size() != 36)
@@ -88,6 +89,9 @@ void RMDPClient::sendMulticast(const std::string& uuid,
     buf.append(uuid);
     buf.append(reinterpret_cast<const char*>(&pay_len), 4);
     buf.append(payload);
+    // End-of-frame footer: magic + 0x02
+    buf.append(reinterpret_cast<const char*>(&magic),   4);
+    buf.push_back(static_cast<char>(RMDP_FRAME_END));
 
     ssize_t sent = sendto(sock_fd_,
                           buf.data(), buf.size(), 0,
